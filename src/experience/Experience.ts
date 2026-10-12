@@ -66,6 +66,7 @@ export class Experience {
       ? await Debug.create({
           radiusUniform: this.world.curvatureUniforms.uPlanetRadius,
           fog: this.world.atmosphere.fog,
+          forest: this.world.forest,
         })
       : null
     // 待っている間にページを離れた場合は、何も始めない
@@ -113,6 +114,8 @@ export class Experience {
 
     this.renderer.render(this.world.scene, this.cameraController.camera)
 
-    this.debug?.update({ distance, courseS: this.world.courseS, velocity })
+    // renderer.info は render のたびに数え直されるため、描画の直後に読む
+    const { calls: drawCalls, triangles } = this.renderer.info.render
+    this.debug?.update({ distance, courseS: this.world.courseS, velocity, drawCalls, triangles })
   }
 }

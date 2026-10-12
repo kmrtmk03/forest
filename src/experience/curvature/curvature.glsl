@@ -23,9 +23,13 @@ float curvatureWrapSigned(float value) {
 }
 
 // 平面ワールド座標 → カメラ相対の平面座標 (dx, h, dz)。dz は前方が負
-vec3 curvatureRelative(vec3 flatWorld) {
-  float s = -flatWorld.z;
-  float forward = curvatureWrapSigned(s - uCurvatureCamera.y);
+// 折り返しは頂点ごとではなく、物の原点（anchorWorld: メッシュ・インスタンスの原点の平面ワールド座標）で決める。
+// 頂点ごとに折り返すと、折り返し位置（カメラから ±courseLength/2）をまたぐ物の頂点が 1 周の両側へ分かれ、
+// 三角形が惑星をまたいで引き伸ばされる。原点で決めれば、物全体が同じだけずれて形が保たれる
+vec3 curvatureRelative(vec3 flatWorld, vec3 anchorWorld) {
+  float anchorForward = curvatureWrapSigned(-anchorWorld.z - uCurvatureCamera.y);
+  // 原点から見た頂点の前方向のずれ（平面ワールド座標では z = -s）
+  float forward = anchorForward + (anchorWorld.z - flatWorld.z);
   return vec3(flatWorld.x - uCurvatureCamera.x, flatWorld.y, -forward);
 }
 

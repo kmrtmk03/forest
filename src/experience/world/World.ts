@@ -4,7 +4,7 @@ import { createCurvatureUniforms } from "@/experience/curvature/applyCurvature"
 import type { ICurvatureUniforms } from "@/experience/curvature/applyCurvature"
 
 import { Atmosphere } from "./Atmosphere"
-import { CoursePoles } from "./CoursePoles"
+import { Forest } from "./Forest"
 import { Ground } from "./Ground"
 import { COURSE_LENGTH, PLANET_RADIUS } from "./world.constants"
 
@@ -22,19 +22,21 @@ export class World {
   )
   /** 光・霧・空。デバッグ GUI からも霧の距離を調整する */
   readonly atmosphere = new Atmosphere()
+  /** 木・岩などの配置物。デバッグ GUI からも seed を切り替える */
+  readonly forest: Forest
   private readonly ground: Ground
-  private readonly coursePoles: CoursePoles
   /** カメラのコース s（COURSE_LENGTH で折り返した値） */
   private cameraS = 0
 
+  /** @throws 配置物の設定が不正な場合（Forest のコンストラクタを参照） */
   constructor() {
     // 背景は空の球が描くため scene.background は使わない。空の地平線付近は霧と同じ色にしてある
     this.scene.fog = this.atmosphere.fog
     this.scene.add(this.atmosphere.group)
 
     this.ground = new Ground(this.curvatureUniforms)
-    this.coursePoles = new CoursePoles(this.curvatureUniforms)
-    this.scene.add(this.ground.mesh, this.coursePoles.mesh)
+    this.forest = new Forest(this.curvatureUniforms)
+    this.scene.add(this.ground.mesh, this.forest.group)
   }
 
   /** カメラのコース s（m、0 以上 COURSE_LENGTH 未満） */
@@ -54,13 +56,14 @@ export class World {
 
     this.curvatureUniforms.uCurvatureCamera.value.set(cameraX, this.cameraS)
     this.ground.update(cameraX, this.cameraS)
+    this.forest.update(this.cameraS)
   }
 
   /** 生成したジオメトリ・マテリアルをすべて破棄する */
   dispose(): void {
     this.atmosphere.dispose()
     this.ground.dispose()
-    this.coursePoles.dispose()
+    this.forest.dispose()
     this.scene.clear()
   }
 }
