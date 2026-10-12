@@ -92,12 +92,12 @@ src/
 - 曲げ変換を使うマテリアルは、必ず `applyCurvature(material, curvatureUniforms, options)` を通す
   - そのメッシュは `frustumCulled = false` にする
   - 独自のシェーダー改変は `options.patchShader` で行い、`options.cacheKey` を固有の値にする
-- 曲げ変換の式は `curvature.glsl` と `curvature.utils.ts` で **同じ式** を保つ。片方だけ変えない
+- オーブの位置計算などで TS 版の曲げ変換を追加するときは、`curvature.glsl` と **同じ式** にする。片方だけ変えない
 
 ### ループ（円環座標）
 
 - 現在の値: `COURSE_LENGTH = 100`、`PLANET_RADIUS = 63.7`
-- 進行距離はリセットせず増やし続ける。折り返すのは描画時の相対距離だけ（`positiveModulo` / `wrapSigned`）
+- 進行距離はリセットせず増やし続ける。折り返すのは描画時だけ（TS は `MathUtils.euclideanModulo`、GLSL は `curvatureWrapSigned`）
 - カメラから ±`COURSE_LENGTH / 2`（±50m）の位置で、物が 1 周の反対側に切り替わる。そのため次を守る
   - 地面・配置物の可視範囲は、前方・後方とも 50m 未満に収める
   - 配置物の高さは約 9.9m 未満にする（頭が見え始める距離 `14.5 + √(127.4·H)` m が 50m を超えないように）
