@@ -54,11 +54,16 @@ const buildFlatWorldPosition = (variableName: string, source: string): string =>
 /**
  * 標準の project_vertex を置き換える GLSL。
  * 平面ワールド座標 → カメラ相対（円環の折り返し）→ 球面写像 → ビュー・投影の順に変換する。
+ * 折り返しはメッシュ（インスタンス）の原点で決め、1 つの物の頂点が折り返し位置の両側へ裂けないようにする。
  * 変数名 mvPosition は後続の標準チャンク（fog_vertex・lights 用の vViewPosition）が参照するため維持する。
  */
 const PROJECT_VERTEX = /* glsl */ `
   ${buildFlatWorldPosition("curvatureFlatPosition", "transformed")}
-  vec3 curvatureRelativePosition = curvatureRelative(curvatureFlatPosition.xyz);
+  ${buildFlatWorldPosition("curvatureAnchorPosition", "vec3(0.0)")}
+  vec3 curvatureRelativePosition = curvatureRelative(
+    curvatureFlatPosition.xyz,
+    curvatureAnchorPosition.xyz
+  );
   vCourseCoord = vec2(
     curvatureFlatPosition.x,
     uCurvatureCamera.y - curvatureRelativePosition.z
@@ -74,9 +79,10 @@ const PROJECT_VERTEX = /* glsl */ `
  */
 const NORMAL_VERTEX = /* glsl */ `
   ${buildFlatWorldPosition("curvatureNormalFlatPosition", "position")}
+  ${buildFlatWorldPosition("curvatureNormalAnchorPosition", "vec3(0.0)")}
   vec3 curvatureWorldNormal = transformNormalByInverseViewMatrix(transformedNormal, viewMatrix);
   curvatureWorldNormal = curvatureNormal(
-    curvatureRelative(curvatureNormalFlatPosition.xyz),
+    curvatureRelative(curvatureNormalFlatPosition.xyz, curvatureNormalAnchorPosition.xyz),
     curvatureWorldNormal
   );
   transformedNormal = normalize((viewMatrix * vec4(curvatureWorldNormal, 0.0)).xyz);

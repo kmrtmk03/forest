@@ -17,12 +17,23 @@ const FOG_DISTANCE_MIN = 0
 const FOG_DISTANCE_MAX = CAMERA_FAR
 const FOG_DISTANCE_STEP = 0.5
 
+/** seed をランダムに選ぶときの上限（32bit 符号なし整数の範囲） */
+const SEED_RANGE = 2 ** 32
+
+/** seed を切り替えて森を作り直せる対象（World の Forest） */
+interface IDebugSeedTarget {
+  readonly seed: number
+  setSeed(seed: number): void
+}
+
 /** デバッグ GUI から調整する対象 */
 interface IDebugTargets {
   /** 惑星半径の uniform（曲げ変換の共有 uniform をそのまま渡す） */
   radiusUniform: IUniform<number>
   /** シーンの霧（Atmosphere の fog をそのまま渡す） */
   fog: Fog
+  /** 配置物の森（seed の切り替えに使う） */
+  forest: IDebugSeedTarget
 }
 
 /** デバッグ表示で読み取る現在値 */
@@ -33,6 +44,10 @@ interface IDebugReadouts {
   courseS: number
   /** 速度（m/s） */
   velocity: number
+  /** 直前のフレームの Draw Call 数 */
+  drawCalls: number
+  /** 直前のフレームで描いた三角形の数 */
+  triangles: number
 }
 
 /**
@@ -40,12 +55,18 @@ interface IDebugReadouts {
  * 通常の閲覧時にライブラリを読み込まないよう、Debug.create で動的 import する。
  */
 export class Debug {
-  private readonly readouts: IDebugReadouts = { distance: 0, courseS: 0, velocity: 0 }
+  private readonly readouts: IDebugReadouts = {
+    distance: 0,
+    courseS: 0,
+    velocity: 0,
+    drawCalls: 0,
+    triangles: 0,
+  }
 
   private constructor(
     private readonly gui: GUI,
     private readonly stats: Stats,
-    { radiusUniform, fog }: IDebugTargets,
+    { radiusUniform, fog, forest }: IDebugTargets,
   ) {
     document.body.append(stats.dom)
 
@@ -66,10 +87,29 @@ export class Debug {
       .add(fog, "far", FOG_DISTANCE_MIN, FOG_DISTANCE_MAX, FOG_DISTANCE_STEP)
       .name("fog far (m)")
 
+    // 森の seed: 入力を確定したとき（または random を押したとき）だけ森を作り直す。
+    // 入力中に毎回作り直すと、配置の生成と InstancedMesh の作り直しが連続して重くなるため
+    const forestFolder = gui.addFolder("Forest")
+    const forestParams = {
+      seed: forest.seed,
+      random: () => {
+        forestParams.seed = Math.floor(Math.random() * SEED_RANGE)
+        seedController.updateDisplay()
+        forest.setSeed(forestParams.seed)
+      },
+    }
+    const seedController = forestFolder
+      .add(forestParams, "seed")
+      .step(1)
+      .onFinishChange((seed: number) => forest.setSeed(seed))
+    forestFolder.add(forestParams, "random").name("random seed")
+
     const status = gui.addFolder("Status")
     status.add(this.readouts, "distance").decimals(2).listen().disable()
     status.add(this.readouts, "courseS").decimals(2).listen().disable()
     status.add(this.readouts, "velocity").decimals(2).listen().disable()
+    status.add(this.readouts, "drawCalls").listen().disable()
+    status.add(this.readouts, "triangles").listen().disable()
   }
 
   /** ?debug が付いているかどうか */

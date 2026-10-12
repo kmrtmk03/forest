@@ -14,6 +14,7 @@ import groundFragmentShader from "@/experience/shaders/ground.frag.glsl?raw"
 import groundShader from "@/experience/shaders/ground.glsl?raw"
 import { insertAfterShaderChunk } from "@/experience/shaders/shaderChunk.utils"
 
+import { assertDividesCourseLength } from "./course.utils"
 import { COURSE_LENGTH, PATH_HALF_WIDTH } from "./world.constants"
 
 /** 地面の頂点間隔（m）。曲げ変換と起伏は頂点単位なので、粗すぎると球面や丘がカクつく */
@@ -121,21 +122,6 @@ const COLOR_PATCH = /* glsl */ `
 `
 
 /**
- * ノイズのセルの大きさが COURSE_LENGTH を割り切るか検証する。
- * 割り切れないと、ループ境界でセル番号の折り返しがずれて模様に段差ができる
- * @throws 割り切れないセルの大きさがある場合
- */
-const assertNoiseCellsDivideCourseLength = (): void => {
-  Object.entries(GROUND_NOISE_CELLS).forEach(([name, cellSize]) => {
-    if (!Number.isInteger(COURSE_LENGTH / cellSize)) {
-      throw new Error(
-        `Ground: ${name}（${cellSize}m）が COURSE_LENGTH（${COURSE_LENGTH}m）を割り切りません`,
-      )
-    }
-  })
-}
-
-/**
  * 惑星の表面となる地面。カメラに追従する 1 枚の平面を、曲げ変換で球冠に見せる。
  *
  * メッシュ自体はカメラの真下に付いて回るだけなので、ループの影響を受けない。
@@ -147,7 +133,9 @@ export class Ground {
 
   /** @throws ノイズのセルの大きさが COURSE_LENGTH を割り切らない場合 */
   constructor(curvatureUniforms: ICurvatureUniforms) {
-    assertNoiseCellsDivideCourseLength()
+    Object.entries(GROUND_NOISE_CELLS).forEach(([name, cellSize]) =>
+      assertDividesCourseLength(`Ground: ${name}`, cellSize),
+    )
 
     const geometry = new PlaneGeometry(GROUND_SIZE, GROUND_SIZE, GROUND_SEGMENTS, GROUND_SEGMENTS)
     // PlaneGeometry は XY 平面なので、XZ 平面（地面）へ寝かせる

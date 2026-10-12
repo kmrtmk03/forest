@@ -48,12 +48,20 @@ export class Experience {
       antialias: true,
       powerPreference: "high-performance",
     })
-    this.cameraController = new CameraController()
-    this.world = new World()
-    this.scrollController = new ScrollController(host, signal)
-    // Viewport は生成時に 1 回 handleResize を呼ぶため、renderer と camera の生成後に作る
-    this.viewport = new Viewport(host, signal, this.handleResize)
-    this.ticker = new Ticker(this.renderer, signal, this.handleTick)
+    try {
+      this.cameraController = new CameraController()
+      this.world = new World()
+      this.scrollController = new ScrollController(host, signal)
+      // Viewport は生成時に 1 回 handleResize を呼ぶため、renderer と camera の生成後に作る
+      this.viewport = new Viewport(host, signal, this.handleResize)
+      this.ticker = new Ticker(this.renderer, signal, this.handleTick)
+    } catch (error) {
+      // 生成に失敗すると呼び出し側は destroy() を呼べないため、ここまでに作ったリスナーとレンダラーを解放する。
+      // World は自分の中で失敗したときに、作った分を破棄してから例外を投げる
+      this.abortController.abort()
+      this.renderer.dispose()
+      throw error
+    }
   }
 
   /**
@@ -66,6 +74,7 @@ export class Experience {
       ? await Debug.create({
           radiusUniform: this.world.curvatureUniforms.uPlanetRadius,
           fog: this.world.atmosphere.fog,
+          forest: this.world.forest,
         })
       : null
     // 待っている間にページを離れた場合は、何も始めない
@@ -113,6 +122,8 @@ export class Experience {
 
     this.renderer.render(this.world.scene, this.cameraController.camera)
 
-    this.debug?.update({ distance, courseS: this.world.courseS, velocity })
+    // renderer.info は render のたびに数え直されるため、描画の直後に読む
+    const { calls: drawCalls, triangles } = this.renderer.info.render
+    this.debug?.update({ distance, courseS: this.world.courseS, velocity, drawCalls, triangles })
   }
 }
