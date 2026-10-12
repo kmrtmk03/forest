@@ -56,25 +56,31 @@ const createTrunkGeometry = ({ topRadius, bottomRadius, height }: ITrunkSize): B
     0,
   )
 
+/*
+ * 葉の寸法。隣の木の樹冠と重なり合って空を覆うよう、幅を広めにしている（鬱蒼とした森にするため）。
+ * 全高はどれも約 6.5m 以下にする。拡大率 1.3 倍で約 8.45m、起伏（最大 1.2m）を足しても約 9.65m で、
+ * ループの折り返し地点で頭が突然現れない上限（約 9.9m）に収まる
+ */
+
 /**
- * 針葉樹の葉: 3 段に重ねた円錐（上ほど小さい）。全高 約 5.6m
+ * 針葉樹の葉: 3 段に重ねた円錐（上ほど小さい）。全高 約 6.4m
  * [半径, 高さ, 円錐の下端の高さ]
  */
 const FIR_TIERS = [
-  [1.8, 2.6, 1.2],
-  [1.4, 2.2, 2.4],
-  [1.0, 1.8, 3.8],
+  [2.4, 2.8, 1.4],
+  [1.9, 2.4, 2.8],
+  [1.4, 2.0, 4.4],
 ] as const
 
-/** 広葉樹の葉: 2 つの二十面体を重ねた丸い樹冠。全高 約 5.4m */
-const BROADLEAF_CROWN_RADIUS = 1.7
-const BROADLEAF_CROWN_CENTER_Y = 3.7
-const BROADLEAF_SUB_CROWN_RADIUS = 1.1
-const BROADLEAF_SUB_CROWN_OFFSET = [0.9, -0.4, 0.4] as const
+/** 広葉樹の葉: 2 つの二十面体を重ねた丸い樹冠。全高 約 6.4m */
+const BROADLEAF_CROWN_RADIUS = 2.4
+const BROADLEAF_CROWN_CENTER_Y = 4.0
+const BROADLEAF_SUB_CROWN_RADIUS = 1.6
+const BROADLEAF_SUB_CROWN_OFFSET = [1.3, -0.5, 0.6] as const
 
-/** 細長い木の葉: 縦に引き伸ばした八面体。全高 約 6.2m */
-const POPLAR_CROWN_RADIUS = 0.9
-const POPLAR_CROWN_STRETCH_Y = 2.9
+/** 細長い木の葉: 縦に引き伸ばした八面体。全高 約 6.5m */
+const POPLAR_CROWN_RADIUS = 1.2
+const POPLAR_CROWN_STRETCH_Y = 2.4
 const POPLAR_CROWN_CENTER_Y = 3.6
 
 /** 岩: 平たくつぶした多面体。中心を少し持ち上げ、下側を地面に埋める */
