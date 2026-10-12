@@ -19,6 +19,7 @@ const MAX_PIXEL_RATIO = 2
  *
  * window の resize ではなく ResizeObserver を使い、モバイルのアドレスバーの伸縮にも追従する。
  * 生成時に 1 回だけ通知するため、呼び出し側は初期サイズを別途設定しなくてよい。
+ * 幅か高さが 0（非表示など）の間は通知しないため、受け取る側はサイズ 0 を考慮しなくてよい。
  * dispose() を呼ぶまで監視を続ける（DPR の監視は AbortSignal で解除される）。
  */
 export class Viewport {
@@ -39,11 +40,7 @@ export class Viewport {
     this.resizeObserver = new ResizeObserver(this.handleResize)
     this.resizeObserver.observe(container)
     this.watchPixelRatio()
-    this.onResize(this.currentSize)
-  }
-
-  get size(): IViewportSize {
-    return this.currentSize
+    this.notify(this.currentSize)
   }
 
   dispose(): void {
@@ -67,7 +64,13 @@ export class Viewport {
     if (isSame) return
 
     this.currentSize = nextSize
-    this.onResize(nextSize)
+    this.notify(nextSize)
+  }
+
+  /** サイズが 0 の間は、投影行列や描画バッファを壊さないよう通知を見送る */
+  private notify(size: IViewportSize): void {
+    if (size.width === 0 || size.height === 0) return
+    this.onResize(size)
   }
 
   /**

@@ -31,11 +31,9 @@ export class CameraController {
   /**
    * 画面のアスペクト比に合わせて投影を更新する。
    * 縦長画面では水平 FOV が MIN_HORIZONTAL_FOV を下回らないよう垂直 FOV を広げる（上限 MAX_VERTICAL_FOV）。
+   * @param aspect 幅 / 高さ。Viewport がサイズ 0 を通知しないため、常に正の値が来る
    */
   resize(aspect: number): void {
-    // 高さ 0 の瞬間など、不正なアスペクト比では投影を壊さないよう更新を見送る
-    if (!Number.isFinite(aspect) || aspect <= 0) return
-
     const minHorizontalHalf = MathUtils.degToRad(MIN_HORIZONTAL_FOV / 2)
     const requiredVerticalFov = MathUtils.radToDeg(
       2 * Math.atan(Math.tan(minHorizontalHalf) / aspect),

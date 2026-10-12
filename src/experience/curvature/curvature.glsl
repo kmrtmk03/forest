@@ -1,5 +1,5 @@
 // 擬似球面（カーブドワールド）の共通 uniform と関数。
-// applyCurvature.ts が頂点・フラグメントシェーダーの #include <common> の直後へ差し込む。
+// applyCurvature.ts が頂点シェーダーの #include <common> の直後へ差し込む（フラグメント側は vCourseCoord の宣言だけ）。
 //
 // 平面ワールド座標の約束:
 //   x = 道の中心からの横距離、y = 地面からの高さ、z = -s（s はコース座標。前方が -Z）
@@ -15,7 +15,7 @@ uniform float uCourseLength;
 // コース座標 (x, s)。s は折り返さずカメラ付近で連続な値（cameraS ± courseLength/2）
 varying vec2 vCourseCoord;
 
-// -courseLength/2 〜 courseLength/2 に折り返す。curvature.utils.ts の wrapSigned と同じ式
+// -courseLength/2 〜 courseLength/2 に折り返し、円環上で最も近い向きの相対距離を求める
 float curvatureWrapSigned(float value) {
   float halfLength = uCourseLength * 0.5;
   // GLSL の mod は常に 0 以上を返すので、負数の補正は不要

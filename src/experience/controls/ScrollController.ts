@@ -41,7 +41,6 @@ export class ScrollController {
   private targetDistance = 0
   private currentDistance = 0
   private currentVelocity = 0
-  private isEnabled = true
   private damping = DAMPING
 
   /** 追跡中のタッチの pointerId。タッチしていない間は null */
@@ -85,19 +84,6 @@ export class ScrollController {
   }
 
   /**
-   * 入力の受け付けを切り替える。
-   * 無効にした時点で残りの移動を打ち切り、その場で止まる（モーダル表示中などに使う）。
-   */
-  setEnabled(isEnabled: boolean): void {
-    this.isEnabled = isEnabled
-    if (isEnabled) return
-
-    this.targetDistance = this.currentDistance
-    this.touchPointerId = null
-    this.touchVelocity = 0
-  }
-
-  /**
    * 目標位置へ指数減衰で追従させる。dt に関係なく同じ時間で同じだけ近づくため、フレームレートに依存しない。
    * @param dt 前フレームからの経過時間（秒）。Ticker 側でクランプ済みの値を渡す
    */
@@ -119,8 +105,6 @@ export class ScrollController {
 
   /** 目標位置を動かす。現在位置からの先行量を MAX_LEAD_METERS までに制限する */
   private moveTarget(meters: number): void {
-    if (!this.isEnabled) return
-
     this.targetDistance = MathUtils.clamp(
       this.targetDistance + meters,
       this.currentDistance - MAX_LEAD_METERS,
@@ -132,24 +116,35 @@ export class ScrollController {
     this.damping = isReduced ? REDUCED_MOTION_DAMPING : DAMPING
   }
 
-  /** wheel の delta を deltaMode ごとに px 相当へ揃えてから距離に変換する */
+  /** wheel の delta を deltaMode（px / 行 / ページ単位）ごとに px 相当へ揃える */
+  private toDeltaPx(event: WheelEvent): number {
+    if (event.deltaMode === WheelEvent.DOM_DELTA_LINE) return event.deltaY * LINE_HEIGHT_PX
+    if (event.deltaMode === WheelEvent.DOM_DELTA_PAGE) return event.deltaY * window.innerHeight
+    return event.deltaY
+  }
+
+  /** 追跡中のタッチを終える */
+  private endTouch(): void {
+    this.touchPointerId = null
+    this.touchVelocity = 0
+  }
+
+  /** wheel の delta を px 相当へ揃え、1 イベントあたりの上限で抑えてから距離に変換する */
   private readonly handleWheel = (event: WheelEvent): void => {
     event.preventDefault()
 
-    const deltaPx =
-      event.deltaMode === WheelEvent.DOM_DELTA_LINE
-        ? event.deltaY * LINE_HEIGHT_PX
-        : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
-          ? event.deltaY * window.innerHeight
-          : event.deltaY
-    const clampedDeltaPx = MathUtils.clamp(deltaPx, -MAX_EVENT_DELTA_PX, MAX_EVENT_DELTA_PX)
+    const clampedDeltaPx = MathUtils.clamp(
+      this.toDeltaPx(event),
+      -MAX_EVENT_DELTA_PX,
+      MAX_EVENT_DELTA_PX,
+    )
 
     this.moveTarget(clampedDeltaPx * WHEEL_METERS_PER_PX)
   }
 
   /** タッチの開始。マウス・ペンはドラッグ移動の対象外（クリック操作に使うため） */
   private readonly handlePointerDown = (event: PointerEvent): void => {
-    if (event.pointerType !== "touch" || this.touchPointerId !== null || !this.isEnabled) return
+    if (event.pointerType !== "touch" || this.touchPointerId !== null) return
 
     this.touchPointerId = event.pointerId
     this.lastTouchY = event.clientY
@@ -187,15 +182,12 @@ export class ScrollController {
       this.moveTarget(flickPx * TOUCH_METERS_PER_PX)
     }
 
-    this.touchPointerId = null
-    this.touchVelocity = 0
+    this.endTouch()
   }
 
   private readonly handlePointerCancel = (event: PointerEvent): void => {
     if (event.pointerId !== this.touchPointerId) return
-
-    this.touchPointerId = null
-    this.touchVelocity = 0
+    this.endTouch()
   }
 
   private readonly handleKeyDown = (event: KeyboardEvent): void => {

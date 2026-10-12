@@ -1,7 +1,7 @@
+import type { IUniform } from "three"
 import type GUI from "three/addons/libs/lil-gui.module.min.js"
 import type Stats from "three/addons/libs/stats.module.js"
 
-import type { ICurvatureUniforms } from "@/experience/curvature/applyCurvature"
 import { PLANET_RADIUS_CANDIDATES } from "@/experience/world/world.constants"
 
 /** 惑星半径スライダーの範囲（m） */
@@ -18,11 +18,6 @@ interface IDebugReadouts {
   velocity: number
 }
 
-/** Debug.create に渡す、調整対象への参照 */
-interface IDebugTargets {
-  curvatureUniforms: ICurvatureUniforms
-}
-
 /**
  * URL に ?debug を付けたときだけ使うデバッグ GUI（lil-gui）と FPS 表示（stats）。
  * 通常の閲覧時にライブラリを読み込まないよう、Debug.create で動的 import する。
@@ -33,13 +28,12 @@ export class Debug {
   private constructor(
     private readonly gui: GUI,
     private readonly stats: Stats,
-    targets: IDebugTargets,
+    radiusUniform: IUniform<number>,
   ) {
     document.body.append(stats.dom)
 
-    // 惑星半径: 候補値の切り替え（Phase 1 で見比べて最終値を決める）と、細かい調整用のスライダー
+    // 惑星半径: 候補値の切り替えと、細かい調整用のスライダー
     const planet = gui.addFolder("Planet")
-    const radiusUniform = targets.curvatureUniforms.uPlanetRadius
     planet.add(radiusUniform, "value", [...PLANET_RADIUS_CANDIDATES]).name("radius preset")
     planet
       .add(radiusUniform, "value", PLANET_RADIUS_MIN, PLANET_RADIUS_MAX, 0.1)
@@ -57,13 +51,16 @@ export class Debug {
     return new URLSearchParams(window.location.search).has("debug")
   }
 
-  /** lil-gui と stats を動的 import してデバッグ表示を作る */
-  static async create(targets: IDebugTargets): Promise<Debug> {
+  /**
+   * lil-gui と stats を動的 import してデバッグ表示を作る
+   * @param radiusUniform GUI から調整する惑星半径の uniform（曲げ変換の共有 uniform をそのまま渡す）
+   */
+  static async create(radiusUniform: IUniform<number>): Promise<Debug> {
     const [{ default: GUIClass }, { default: StatsClass }] = await Promise.all([
       import("three/addons/libs/lil-gui.module.min.js"),
       import("three/addons/libs/stats.module.js"),
     ])
-    return new Debug(new GUIClass({ title: "Forest debug" }), new StatsClass(), targets)
+    return new Debug(new GUIClass({ title: "Forest debug" }), new StatsClass(), radiusUniform)
   }
 
   /** 毎フレームの表示更新。Experience のループの最後に呼ぶ */

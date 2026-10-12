@@ -5,7 +5,7 @@ import curvatureShader from "./curvature.glsl?raw"
 
 /** 擬似球面の曲げ変換で全マテリアルが共有する uniform */
 export interface ICurvatureUniforms {
-  /** (カメラのコース x, カメラのコース s mod COURSE_LENGTH)。Experience が毎フレーム更新する */
+  /** (カメラのコース x, カメラのコース s mod COURSE_LENGTH)。World が毎フレーム更新する */
   uCurvatureCamera: IUniform<Vector2>
   /** 見た目の惑星半径（m） */
   uPlanetRadius: IUniform<number>
@@ -17,8 +17,8 @@ export interface ICurvatureUniforms {
 interface IApplyCurvatureOptions {
   /** 曲げ変換を差し込んだ後に、マテリアル固有のシェーダー改変を行う（地面の模様など） */
   patchShader?: (shader: WebGLProgramParametersWithUniforms) => void
-  /** patchShader で内容が変わる場合に、プログラムキャッシュを区別するためのキー */
-  cacheKey?: string
+  /** プログラムキャッシュを区別するためのキー。patchShader の内容ごとに固有の値にする */
+  cacheKey: string
 }
 
 /**
@@ -80,6 +80,9 @@ const NORMAL_VERTEX = /* glsl */ `
   transformedNormal = normalize((viewMatrix * vec4(curvatureWorldNormal, 0.0)).xyz);
 `
 
+/** フラグメントシェーダーへ差し込む宣言。curvature.glsl の varying と同じ名前・型にする */
+const FRAGMENT_PARS = /* glsl */ `varying vec2 vCourseCoord;`
+
 /** 差し込み先の標準チャンク */
 const COMMON_CHUNK = "#include <common>"
 const DEFAULT_NORMAL_CHUNK = "#include <defaultnormal_vertex>"
@@ -94,7 +97,7 @@ const PROJECT_VERTEX_CHUNK = "#include <project_vertex>"
 export const applyCurvature = <TMaterial extends Material>(
   material: TMaterial,
   uniforms: ICurvatureUniforms,
-  options: IApplyCurvatureOptions = {},
+  options: IApplyCurvatureOptions,
 ): TMaterial => {
   material.onBeforeCompile = (shader) => {
     // uniform は同じオブジェクトを共有させる（値をコピーしない）
@@ -105,17 +108,17 @@ export const applyCurvature = <TMaterial extends Material>(
       .replace(DEFAULT_NORMAL_CHUNK, `${DEFAULT_NORMAL_CHUNK}\n${NORMAL_VERTEX}`)
       .replace(PROJECT_VERTEX_CHUNK, PROJECT_VERTEX)
 
-    // フラグメント側でも vCourseCoord と uniform を参照できるようにする
+    // フラグメント側ではコース座標（地面の模様など）だけを参照できるようにする
     shader.fragmentShader = shader.fragmentShader.replace(
       COMMON_CHUNK,
-      `${COMMON_CHUNK}\n${curvatureShader}`,
+      `${COMMON_CHUNK}\n${FRAGMENT_PARS}`,
     )
 
     options.patchShader?.(shader)
   }
 
   // onBeforeCompile の内容が違うマテリアル同士でプログラムを共有しないようにする
-  material.customProgramCacheKey = () => `curvature:${options.cacheKey ?? "default"}`
+  material.customProgramCacheKey = () => `curvature:${options.cacheKey}`
 
   return material
 }

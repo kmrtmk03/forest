@@ -1,3 +1,5 @@
+import { FOG_FAR } from "@/experience/world/world.constants"
+
 /**
  * スクロール入力とカメラの調整値。
  * 距離は m、時間は秒、角度は度で表す。
@@ -50,9 +52,14 @@ export const MIN_HORIZONTAL_FOV = 60
 /** 縦長画面で垂直 FOV を広げるときの上限（度）。これ以上は広角の歪みが目立つ */
 export const MAX_VERTICAL_FOV = 75
 
-/** カメラの描画範囲（m）。far は霧の終端より少し先まで */
+/** カメラの描画範囲の手前側（m）。小さくしすぎると深度の精度が落ちる */
 export const CAMERA_NEAR = 0.1
-export const CAMERA_FAR = 150
+
+/** 霧の終端から far までの余裕（m） */
+const CAMERA_FAR_MARGIN = 60
+
+/** カメラの描画範囲の奥側（m）。霧で見えなくなる距離より先まで描き、霧の変更に追従させる */
+export const CAMERA_FAR = FOG_FAR + CAMERA_FAR_MARGIN
 
 /** 視線を前方から下へ傾ける角度（度）。地平線が画面中央のやや下に来るようにする */
 export const CAMERA_PITCH_DOWN = 4
