@@ -13,7 +13,7 @@ export const positiveModulo = (value: number, length: number): number =>
 /**
  * -length/2 以上 length/2 未満に折り返す。
  * 「オブジェクトのコース位置 - カメラのコース位置」に使い、円環上で最も近い向きの相対距離を求める。
- * 例: length = 400 のとき wrapSigned(-396, 400) = 4（4m 先）
+ * 例: length = 100 のとき wrapSigned(-96, 100) = 4（4m 先）
  */
 export const wrapSigned = (value: number, length: number): number =>
   positiveModulo(value + length / 2, length) - length / 2

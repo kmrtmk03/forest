@@ -32,7 +32,7 @@ const TOUCH_VELOCITY_SMOOTHING = 0.8
  * wheel / タッチ / キーボードの入力を「コース上の進行距離」に変換し、慣性付きで追従させる。
  *
  * - targetDistance: 入力で増減する目標位置
- * - currentDistance: 実際のカメラ位置。リセットせず無限に増減する（400m の折り返しは描画側で行う）
+ * - currentDistance: 実際のカメラ位置。リセットせず無限に増減する（1 周分の折り返しは描画側で行う）
  *
  * 毎フレーム update(dt) を呼ぶこと。呼ばないと currentDistance が目標へ追従しない。
  * リスナーは渡された AbortSignal で登録するため、Experience の abort() で一括解除される。

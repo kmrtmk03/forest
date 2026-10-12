@@ -4,19 +4,23 @@ import type { WebGLProgramParametersWithUniforms } from "three"
 import { applyCurvature } from "@/experience/curvature/applyCurvature"
 import type { ICurvatureUniforms } from "@/experience/curvature/applyCurvature"
 
-import { PATH_HALF_WIDTH } from "./world.constants"
+import { COURSE_LENGTH, PATH_HALF_WIDTH } from "./world.constants"
+
+/** 地面の頂点間隔（m）。曲げ変換は頂点単位なので、粗すぎると球面がカクつく */
+const GROUND_VERTEX_SPACING = 2
 
 /**
  * 地面メッシュの一辺（m）。地平線より十分大きくし、地平線の向こうにある物の根元を地面で隠す。
- * コースの折り返し幅（COURSE_LENGTH / 2）より小さく保つこと
+ * 端の頂点が折り返し位置（カメラから ±COURSE_LENGTH / 2）に達すると反対側へ飛んで地面が裂けるため、
+ * 頂点 1 間隔分だけ内側に収める（COURSE_LENGTH = 100 のとき 96m = ±48m）
  */
-const GROUND_SIZE = 240
+const GROUND_SIZE = COURSE_LENGTH - GROUND_VERTEX_SPACING * 2
 
-/** 地面メッシュの分割数（2m ごとに頂点）。曲げ変換は頂点単位なので、粗すぎると球面がカクつく */
-const GROUND_SEGMENTS = 120
+/** 地面メッシュの分割数 */
+const GROUND_SEGMENTS = GROUND_SIZE / GROUND_VERTEX_SPACING
 
 /**
- * 仮の地面の模様。グリッド間隔は COURSE_LENGTH（400m）を割り切る値にし、ループ境界で模様がずれないようにする。
+ * 仮の地面の模様。グリッド間隔は COURSE_LENGTH（100m）を割り切る値にし、ループ境界で模様がずれないようにする。
  * TODO: Phase 2 で道・草地の模様（ground.vert / ground.frag）に置き換える
  */
 const MINOR_GRID_SPACING = 2
