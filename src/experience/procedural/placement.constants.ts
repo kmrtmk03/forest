@@ -4,7 +4,7 @@ import type { IPlacementRule } from "./placement.type"
  * 配置物の配置ルール。計画書 §11-3 の帯（道の中心からの距離）に合わせる。
  *   0〜1.2m: 道（何も置かない）
  *   1.2〜3.5m: 低い物だけ（Phase 3 では小さめの岩）
- *   3.5〜12m: まばらな木・岩（道に沿った「縁」）
+ *   3.5〜12m: 道の縁の木・岩（12m に向けて密度を上げる）
  *   12m〜: 密な木（森の壁）
  */
 
@@ -31,8 +31,9 @@ export const CLEARING_SEED_OFFSET = 7919
 const MAX_PROP_DISTANCE = 42
 
 /**
- * 木のルール。モデルの高さは最大約 6.2m、拡大率 1.3 倍で約 8.1m。
- * 起伏（最大 1.2m）を足しても約 9.9m 未満に収め、ループの折り返し地点で頭が突然現れないようにする
+ * 木のルール。モデルの高さは最大約 6.5m、拡大率 1.3 倍で約 8.45m。
+ * 起伏（最大 1.2m）を足しても約 9.9m 未満に収め、ループの折り返し地点で頭が突然現れないようにする。
+ * 道の縁から密に生やし、空き地も控えめにして、樹冠が重なり合う鬱蒼とした森にする
  */
 const TREE_RULE: IPlacementRule = {
   kind: "tree",
@@ -41,12 +42,12 @@ const TREE_RULE: IPlacementRule = {
   minDistanceFromPath: 3.5,
   maxDistanceFromPath: MAX_PROP_DISTANCE,
   densityCurve: [
-    [3.5, 0.15],
-    [10, 0.3],
-    [14, 0.7],
-    [MAX_PROP_DISTANCE, 0.7],
+    [3.5, 0.5],
+    [8, 0.7],
+    [12, 0.9],
+    [MAX_PROP_DISTANCE, 0.9],
   ],
-  clearingStrength: 0.75,
+  clearingStrength: 0.5,
   // 0: 針葉樹、1: 広葉樹、2: 細長い木
   variantWeights: [0.45, 0.35, 0.2],
   scaleRange: [0.8, 1.3],
