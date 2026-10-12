@@ -12,7 +12,7 @@ export interface IPropModelPart {
 
 /**
  * 配置物のモデル。配置データの (kind, variant) と対応づけて描く。
- * 今は仮のプリミティブ形状（primitivePropModels.utils.ts）で作る。
+ * 今は木をフラクタルの枝 + 板ポリの葉（fractalTreeModels.utils.ts）、岩を仮のプリミティブ形状（primitiveRockModels.utils.ts）で作る。
  * TODO: AssetManager で GLB を読み込めるようになったら、同じ形で返して差し替える（計画書 付録 A）
  */
 export interface IPropModel {

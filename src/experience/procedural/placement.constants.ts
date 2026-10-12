@@ -48,8 +48,9 @@ const TREE_RULE: IPlacementRule = {
     [MAX_PROP_DISTANCE, 0.9],
   ],
   clearingStrength: 0.5,
-  // 0: 針葉樹、1: 広葉樹、2: 細長い木
-  variantWeights: [0.45, 0.35, 0.2],
+  // モデル番号は「種類 × 2 + 形」（world/fractalTreeModels.utils.ts）。種類ごとに 2 つの形を同じ割合で混ぜる
+  // 0, 1: 針葉樹（計 0.45）、2, 3: 広葉樹（計 0.35）、4, 5: 細長い木（計 0.2）
+  variantWeights: [0.225, 0.225, 0.175, 0.175, 0.1, 0.1],
   scaleRange: [0.8, 1.3],
   maxTiltDegrees: 3,
   tintRange: [0.8, 1.15],

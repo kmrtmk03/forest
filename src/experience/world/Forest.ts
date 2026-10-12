@@ -1,4 +1,14 @@
-import { Color, Euler, Group, InstancedMesh, MathUtils, Matrix4, Quaternion, Vector3 } from "three"
+import {
+  Color,
+  Euler,
+  Group,
+  InstancedMesh,
+  MathUtils,
+  Matrix4,
+  Quaternion,
+  Texture,
+  Vector3,
+} from "three"
 import type { Material } from "three"
 
 import type { ICurvatureUniforms } from "@/experience/curvature/applyCurvature"
@@ -15,7 +25,8 @@ import {
   listVisibleChunks,
 } from "@/experience/procedural/placement.utils"
 
-import { createPrimitivePropModels } from "./primitivePropModels.utils"
+import { createFractalTreeModels } from "./fractalTreeModels.utils"
+import { createPrimitiveRockModels } from "./primitiveRockModels.utils"
 import type { IPropModel } from "./propModel.type"
 import { CHUNK_LENGTH, VISIBLE_CHUNKS_AHEAD, VISIBLE_CHUNKS_BEHIND } from "./world.constants"
 
@@ -83,8 +94,13 @@ export class Forest {
       throw new Error("Forest: 可視チャンクの数が 1 周のチャンク数を超えています")
     }
 
-    this.models = createPrimitivePropModels(curvatureUniforms)
+    this.models = []
     try {
+      // モデルの生成（葉の画像を描く Canvas を含む）も失敗しうるため、try の中で作る
+      this.models = [
+        ...createFractalTreeModels(curvatureUniforms),
+        ...createPrimitiveRockModels(curvatureUniforms),
+      ]
       this.rebuild(WORLD_SEED)
     } catch (error) {
       // 呼び出し側は生成に失敗したインスタンスを受け取れず dispose できないため、ここで破棄する
@@ -257,9 +273,9 @@ export class Forest {
     this.meshesByModel.clear()
   }
 
-  /** モデルのジオメトリ・マテリアルを破棄する */
+  /** モデルのジオメトリ・マテリアル・テクスチャ（葉の画像）を破棄する */
   private disposeModels(): void {
-    // 幹のマテリアルのように複数の部品で共有している物があるため、重複を除いてから破棄する
+    // 同じ種類の木の幹・葉のように、複数の部品で共有しているマテリアルがあるため、重複を除いてから破棄する
     const materials = new Set<Material>()
     this.models.forEach(({ parts }) =>
       parts.forEach(({ geometry, material }) => {
@@ -267,6 +283,10 @@ export class Forest {
         materials.add(material)
       }),
     )
-    materials.forEach((material) => material.dispose())
+    materials.forEach((material) => {
+      // マテリアルを破棄しても map のテクスチャは GPU に残るため、個別に破棄する
+      if ("map" in material && material.map instanceof Texture) material.map.dispose()
+      material.dispose()
+    })
   }
 }
