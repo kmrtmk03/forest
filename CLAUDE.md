@@ -96,7 +96,8 @@ src/
   - 独自のシェーダー改変は `options.patchShader` で行い、`options.cacheKey` を固有の値にする
 - オーブの位置計算などで TS 版の曲げ変換を追加するときは、`curvature.glsl` と **同じ式** にする。片方だけ変えない
 - 地面の起伏・道の中心線も同様に、`procedural/path.utils.ts` と `shaders/ground.glsl` を同じ式に保つ。定数は `path.constants.ts` から `material.defines` で GLSL へ渡す
-- GLSL のコメントに `#include <...>` の文字列を書かない（チャンクの置換に巻き込まれてコンパイルエラーになる）
+- 標準チャンクへの差し込みは `shaders/shaderChunk.utils.ts` の `insertAfterShaderChunk` / `replaceShaderChunk` を使う（チャンクが見つからなければ例外になる）。GLSL のコメントに `#include <...>` の文字列を書かない（置換に巻き込まれてコンパイルエラーになる）
+- 曲げ変換を使うマテリアルの霧は、ビューの奥行きではなくカメラからの直線距離で掛かる（`applyCurvature` が fog_vertex を置き換える）
 
 ### ループ（円環座標）
 
