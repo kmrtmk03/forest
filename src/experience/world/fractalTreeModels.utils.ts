@@ -252,18 +252,34 @@ const buildBarkGeometry = (segments: readonly IBranchSegment[]): BufferGeometry 
  * 葉の板をまとめて 1 つのジオメトリにする。
  * 法線は板の向きではなく「樹冠の中心から外向き（少し上寄り）」にする。
  * 板の向きのままだと、ばらばらの向きの板が明暗のまだらになるため、樹冠を 1 つの塊として陰影を付ける
+ * @param leaves 葉の板の一覧
+ * @param minBottomY 板の最も低い角がこの高さより下になる板は作らない（道の上のカメラに葉がかからないようにする）
  */
-const buildLeafGeometry = (leaves: readonly ILeafCard[]): BufferGeometry => {
-  const crownCenter = leaves
+const buildLeafGeometry = (
+  leaves: readonly ILeafCard[],
+  minBottomY = Number.NEGATIVE_INFINITY,
+): BufferGeometry => {
+  const cards = leaves
+    .map(({ center, rotation, size }) => {
+      const geometry = new PlaneGeometry(size, size)
+      geometry.rotateX(rotation.x).rotateY(rotation.y).rotateZ(rotation.z)
+      geometry.translate(center.x, center.y, center.z)
+      geometry.computeBoundingBox()
+      return { center, geometry }
+    })
+    .filter(({ geometry }) => {
+      const isHigh = (geometry.boundingBox?.min.y ?? 0) >= minBottomY
+      if (!isHigh) geometry.dispose()
+      return isHigh
+    })
+
+  // 残った葉だけで樹冠の中心を求める
+  const crownCenter = cards
     .reduce((sum, { center }) => sum.add(center), new Vector3())
-    .divideScalar(Math.max(1, leaves.length))
+    .divideScalar(Math.max(1, cards.length))
   const normal = new Vector3()
 
-  const pieces = leaves.map(({ center, rotation, size }) => {
-    const geometry = new PlaneGeometry(size, size)
-    geometry.rotateX(rotation.x).rotateY(rotation.y).rotateZ(rotation.z)
-    geometry.translate(center.x, center.y, center.z)
-
+  const pieces = cards.map(({ center, geometry }) => {
     normal.subVectors(center, crownCenter).normalize()
     normal.y += LEAF_NORMAL_UP_BIAS
     normal.normalize()
@@ -287,17 +303,15 @@ const mergeAndDispose = (geometries: BufferGeometry[]): BufferGeometry => {
 }
 
 /**
- * 幹・枝と葉のジオメトリを、全高が species.height になるよう同じ倍率で拡大縮小する。
- * 根元（原点）は動かさない
+ * 幹・枝と葉をまとめた全高が height になる倍率を求める（根元は原点なので、上端の高さだけで決まる）
  */
-const fitToHeight = (height: number, ...geometries: BufferGeometry[]): void => {
+const measureFitScale = (height: number, ...geometries: BufferGeometry[]): number => {
   const bounds = new Box3()
   geometries.forEach((geometry) => {
     geometry.computeBoundingBox()
     if (geometry.boundingBox) bounds.union(geometry.boundingBox)
   })
-  const scale = height / bounds.max.y
-  geometries.forEach((geometry) => geometry.scale(scale, scale, scale))
+  return height / bounds.max.y
 }
 
 /**
@@ -331,7 +345,7 @@ export const createFractalTreeModels = (curvatureUniforms: ICurvatureUniforms): 
     const leafMaterial = applyCurvature(
       new MeshLambertMaterial({
         color: species.leaves.color,
-        map: createLeafTexture(species.leaves.texture),
+        map: createLeafTexture(),
         alphaTest: LEAF_ALPHA_TEST,
         // MSAA で葉の縁を滑らかにし、遠くで葉が細かくちらつくのを抑える
         alphaToCoverage: true,
@@ -345,8 +359,16 @@ export const createFractalTreeModels = (curvatureUniforms: ICurvatureUniforms): 
       const random = mulberry32(hash2(speciesIndex, shapeIndex, TREE_SHAPE_SEED))
       const skeleton = new TreeSkeletonBuilder(species, random).build()
       const barkGeometry = buildBarkGeometry(skeleton.segments)
-      const leafGeometry = buildLeafGeometry(skeleton.leaves)
-      fitToHeight(species.height, barkGeometry, leafGeometry)
+
+      // 1 回目: すべての葉で全高を測り、species.height にそろえる倍率を求める
+      const allLeaves = buildLeafGeometry(skeleton.leaves)
+      const scale = measureFitScale(species.height, barkGeometry, allLeaves)
+      allLeaves.dispose()
+      // 2 回目: そろえた後に canopyMinHeight より下へ垂れる葉を除いて作り直す。
+      // 一番上の葉は除かれないので、全高（倍率）は 1 回目と変わらない
+      const leafGeometry = buildLeafGeometry(skeleton.leaves, species.canopyMinHeight / scale)
+      barkGeometry.scale(scale, scale, scale)
+      leafGeometry.scale(scale, scale, scale)
 
       return {
         kind: "tree",

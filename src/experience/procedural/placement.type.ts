@@ -23,6 +23,8 @@ export interface IPropPlacement {
   rotationY: number
   /** 拡大率（1 = モデルそのままの大きさ） */
   scale: number
+  /** 縦方向だけに掛ける追加の拡大率。同じモデルでも背の高い木・低い木を作る */
+  heightScale: number
   /** 傾き（ラジアン）。rotationY で決まる向きへ倒す */
   tilt: number
   /** 色の明るさの倍率（1 = マテリアルの色のまま）。同じモデルの個体差を出す */
@@ -54,6 +56,8 @@ export interface IPlacementRule {
   variantWeights: readonly number[]
   /** 拡大率の範囲 [最小, 最大] */
   scaleRange: readonly [number, number]
+  /** 縦方向だけに掛ける追加の拡大率の範囲 [最小, 最大] */
+  heightScaleRange: readonly [number, number]
   /** 傾きの最大値（度） */
   maxTiltDegrees: number
   /** 色の明るさの倍率の範囲 [最小, 最大] */

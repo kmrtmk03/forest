@@ -1,8 +1,6 @@
-import { CanvasTexture, MathUtils, SRGBColorSpace } from "three"
+import { CanvasTexture, SRGBColorSpace } from "three"
 
 import { mulberry32, randomRange } from "@/experience/procedural/random.utils"
-
-import type { TLeafTextureKind } from "./fractalTree.type"
 
 /**
  * 板ポリの葉に貼る画像を、Canvas 2D で描いて作る（画像ファイルを用意しなくて済むようにするため）。
@@ -21,18 +19,13 @@ const BROADLEAF_COUNT = 34
 const BROADLEAF_LENGTH_RATIO = [0.16, 0.24] as const
 const BROADLEAF_WIDTH_RATIO = 0.45
 
-/** 針葉樹の葉: 小枝の本数と、1 本の小枝に付ける針の本数・長さ（画像の一辺に対する割合） */
-const NEEDLE_TWIG_COUNT = 9
-const NEEDLES_PER_TWIG = 16
-const NEEDLE_LENGTH_RATIO = 0.12
-
 /** 葉を描く範囲（中心からの半径。画像の一辺に対する割合）。端まで描くと板の四角い縁が見える */
 const LEAF_AREA_RADIUS_RATIO = 0.4
 
 /** 葉の明るさの範囲（0〜255 の灰色）。マテリアルの色に掛かるので、白に近いほど明るい緑になる */
 const LEAF_SHADE_RANGE = [150, 255] as const
 
-/** 葉脈・小枝の線の色（暗い灰色） */
+/** 葉脈の線の色（暗い灰色） */
 const VEIN_COLOR = "rgb(90, 90, 90)"
 
 /** 0〜255 の明るさを CSS の灰色にする */
@@ -67,62 +60,19 @@ const drawBroadleaves = (context: CanvasRenderingContext2D, random: () => number
   }
 }
 
-/** 針葉樹の葉: 中心から伸びる小枝に、両側へ短い針を並べる */
-const drawNeedles = (context: CanvasRenderingContext2D, random: () => number): void => {
-  const center = LEAF_TEXTURE_SIZE / 2
-  const twigLength = LEAF_TEXTURE_SIZE * LEAF_AREA_RADIUS_RATIO
-  const needleLength = LEAF_TEXTURE_SIZE * NEEDLE_LENGTH_RATIO
-  context.lineCap = "round"
-
-  for (let twig = 0; twig < NEEDLE_TWIG_COUNT; twig++) {
-    const twigAngle = (twig / NEEDLE_TWIG_COUNT) * Math.PI * 2 + random() * 0.4
-    const directionX = Math.cos(twigAngle)
-    const directionY = Math.sin(twigAngle)
-
-    context.strokeStyle = VEIN_COLOR
-    context.lineWidth = 1.5
-    context.beginPath()
-    context.moveTo(center, center)
-    context.lineTo(center + directionX * twigLength, center + directionY * twigLength)
-    context.stroke()
-
-    context.lineWidth = 2
-    for (let needle = 0; needle < NEEDLES_PER_TWIG; needle++) {
-      const along = ((needle + 1) / NEEDLES_PER_TWIG) * twigLength
-      const baseX = center + directionX * along
-      const baseY = center + directionY * along
-      // 針は小枝から先端側へ斜めに、左右交互に出す
-      const side = needle % 2 === 0 ? 1 : -1
-      const needleAngle = twigAngle + side * MathUtils.degToRad(randomRange(random, 35, 55))
-      // 先端に近い針ほど短くし、小枝の先を尖らせる
-      const length = needleLength * (1 - (0.6 * along) / twigLength)
-      context.strokeStyle = toGray(randomRange(random, ...LEAF_SHADE_RANGE))
-      context.beginPath()
-      context.moveTo(baseX, baseY)
-      context.lineTo(baseX + Math.cos(needleAngle) * length, baseY + Math.sin(needleAngle) * length)
-      context.stroke()
-    }
-  }
-}
-
 /**
- * 葉の画像を作る。破棄（dispose）は、このテクスチャを map に持つマテリアルを破棄する側が行うこと
- * @param kind 葉の画像の種類
+ * 広葉樹の葉の画像を作る。破棄（dispose）は、このテクスチャを map に持つマテリアルを破棄する側が行うこと
+ * MEMO: 針葉樹の葉（小枝に針を並べる画像）は木を 1 種類にしたときに削除した。戻すときは b7b8a45 を参照
  * @throws Canvas 2D のコンテキストを作れない場合
  */
-export const createLeafTexture = (kind: TLeafTextureKind): CanvasTexture => {
+export const createLeafTexture = (): CanvasTexture => {
   const canvas = document.createElement("canvas")
   canvas.width = LEAF_TEXTURE_SIZE
   canvas.height = LEAF_TEXTURE_SIZE
   const context = canvas.getContext("2d")
   if (!context) throw new Error("leafTexture: Canvas 2D のコンテキストを作れませんでした")
 
-  const random = mulberry32(LEAF_TEXTURE_SEED)
-  if (kind === "needle") {
-    drawNeedles(context, random)
-  } else {
-    drawBroadleaves(context, random)
-  }
+  drawBroadleaves(context, mulberry32(LEAF_TEXTURE_SEED))
 
   const texture = new CanvasTexture(canvas)
   // 灰色の濃淡は色として扱う（マテリアルの色と掛け合わせる前に線形へ変換させる）

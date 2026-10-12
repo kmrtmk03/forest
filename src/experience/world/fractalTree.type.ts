@@ -2,9 +2,6 @@
  * フラクタルの木（再帰的に枝分かれする枝 + 板ポリの葉）の型。
  */
 
-/** 葉の画像の種類（leafTexture.utils.ts で描き分ける） */
-export type TLeafTextureKind = "broadleaf" | "needle"
-
 /** 葉の付け方 */
 export interface IFractalLeafParams {
   /** この次数以上の枝の節に葉を付ける（0 = 幹、1 = 幹から出た枝、2 = その枝から出た枝） */
@@ -15,8 +12,6 @@ export interface IFractalLeafParams {
   cardSize: number
   /** 節から葉の板の中心をずらす最大距離（m）。大きいほど葉の塊がふんわり広がる */
   spread: number
-  /** 葉の画像の種類 */
-  texture: TLeafTextureKind
   /** 葉の色（画像の白い部分にこの色が掛かる） */
   color: string
 }
@@ -28,8 +23,13 @@ export interface IFractalLeafParams {
 export interface IFractalTreeSpecies {
   /** 種類の名前（デバッグ・コメント用。モデル番号は FRACTAL_TREE_SPECIES の並び順で決まる） */
   name: string
-  /** 生成後に全体を拡大縮小して、この高さ（m）にそろえる。配置物の高さの上限（約 9.9m）を守るため */
+  /** 生成後に全体を拡大縮小して、この高さ（m）にそろえる（拡大率 1 のときの全高） */
   height: number
+  /**
+   * 葉の下端の高さの下限（m、height にそろえた後・拡大率 1 のとき）。これより下へ垂れる葉の板は付けない。
+   * 道に寄せた木の葉が、道の上を歩くカメラ（目の高さ 1.65m）にかからないようにする
+   */
+  canopyMinHeight: number
   /** 幹の長さ（m）。height にそろえる前の値なので、枝との比率だけが意味を持つ */
   trunkLength: number
   /** 幹の根元の半径（m、height にそろえる前の値） */

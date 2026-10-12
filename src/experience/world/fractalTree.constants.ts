@@ -2,7 +2,7 @@ import type { IFractalTreeSpecies } from "./fractalTree.type"
 
 /**
  * フラクタルの木の形を決める定数。
- * ポリゴン数は 1 本あたり 約 600〜800 を目安にする（同時に数百本描くため。計画書 §17-3 の目標 PC 50 万）
+ * ポリゴン数は 1 本あたり 約 700〜800 を目安にする（同時に約 400 本描くため。計画書 §17-3 の目標 PC 50 万）
  */
 
 /** 木の形の乱数の seed。森の配置（WORLD_SEED）とは独立させ、seed を変えても木の形は変えない */
@@ -18,92 +18,43 @@ export const BARK_RADIAL_SEGMENTS_BY_ORDER = [5, 3, 3] as const
 export const MIN_BRANCH_RADIUS = 0.02
 
 /**
- * 木の種類。全高はどれも 6.5m 以下にする。拡大率 1.3 倍で約 8.45m、起伏（最大 1.2m）を足しても約 9.65m で、
- * ループの折り返し地点で頭が突然現れない上限（約 9.9m）に収まる
+ * 木の種類。軽くするため 1 種類（広葉樹）だけにし、形の違いは SHAPES_PER_SPECIES と、
+ * 配置ごとの回転・拡大率・縦の伸び・傾き・色の明るさ（placement.constants.ts）で出す。
+ *
+ * 高さについて: 新しいチャンクの木は 45m 先から描かれ、そこで地平線より上に頭を出す木（高さ 7.3m 以上）は
+ * 目からの直線距離が 47.5m 以上になるため、霧（FOG_FAR 45m）で完全に見えない。高い木ほど遠くなるので、
+ * 高さによって突然現れることはない（FOG_FAR を 45m より大きくするときは再確認すること）
  */
 export const FRACTAL_TREE_SPECIES: readonly IFractalTreeSpecies[] = [
   {
-    // 針葉樹: まっすぐな幹から、ほぼ水平の枝を輪のように出す。上ほど枝が短く、円錐形になる
-    name: "fir",
-    height: 6.4,
-    trunkLength: 6.4,
-    trunkRadius: 0.24,
-    trunkSegments: 8,
-    firstBranchHeightRatio: 0.2,
-    maxOrder: 1,
-    branchesPerNode: [4, 5],
-    branchAngleDegrees: [70, 85],
-    branchLengthRatio: 0.42,
-    branchSegments: 2,
-    branchRadiusRatio: 0.35,
-    tipRadiusRatio: 0.25,
-    topTaper: 0.85,
-    gravity: -0.12,
-    wobble: 0.05,
-    barkColor: "#4a3528",
-    leaves: {
-      minOrder: 1,
-      cardsPerNode: 3,
-      cardSize: 1.8,
-      spread: 0.4,
-      texture: "needle",
-      color: "#2f5a3a",
-    },
-  },
-  {
-    // 広葉樹: 短い幹の上で大きく枝分かれし、枝先に葉の塊を付けて丸い樹冠にする
-    name: "broadleaf",
-    height: 6.2,
-    trunkLength: 2.4,
-    trunkRadius: 0.26,
-    trunkSegments: 2,
-    firstBranchHeightRatio: 0.5,
+    // 広葉樹: 太い幹を高くまっすぐ伸ばし、上の方で大きく枝分かれして広い樹冠を作る。
+    // 枝と葉は頭上（拡大率が最小でも 3m 以上）から始め、道に近い木の枝が道の上へ張り出してもカメラに当たらないようにする
+    name: "canopy",
+    height: 9.5,
+    // 拡大率が最小（0.85 × 縦 0.9 = 0.765 倍）でも葉の下端が 約 2.6m になり、目の高さ（1.65m）より 1m ほど上に残る
+    canopyMinHeight: 3.4,
+    trunkLength: 6,
+    trunkRadius: 0.34,
+    trunkSegments: 5,
+    // 幹の上側 2 節（高さの 8 割と 10 割）からだけ枝を出し、枝の付け根を頭上高くに置く
+    firstBranchHeightRatio: 0.8,
     maxOrder: 2,
     branchesPerNode: [2, 3],
-    branchAngleDegrees: [30, 50],
-    branchLengthRatio: 0.9,
+    branchAngleDegrees: [35, 60],
+    branchLengthRatio: 0.75,
     branchSegments: 2,
-    branchRadiusRatio: 0.6,
-    tipRadiusRatio: 0.55,
+    branchRadiusRatio: 0.55,
+    tipRadiusRatio: 0.5,
     topTaper: 0,
-    gravity: 0.08,
+    gravity: 0.06,
     wobble: 0.2,
     barkColor: "#5a4030",
     leaves: {
       minOrder: 2,
-      cardsPerNode: 4,
-      cardSize: 1.9,
-      spread: 0.6,
-      texture: "broadleaf",
+      cardsPerNode: 5,
+      cardSize: 2.6,
+      spread: 0.9,
       color: "#4a7a3a",
-    },
-  },
-  {
-    // 細長い木: 幹に沿って短い枝を上向きに出し、縦長の樹冠にする
-    name: "poplar",
-    height: 6.5,
-    trunkLength: 6.5,
-    trunkRadius: 0.18,
-    trunkSegments: 6,
-    firstBranchHeightRatio: 0.2,
-    maxOrder: 1,
-    branchesPerNode: [2, 3],
-    branchAngleDegrees: [20, 35],
-    branchLengthRatio: 0.3,
-    branchSegments: 2,
-    branchRadiusRatio: 0.4,
-    tipRadiusRatio: 0.3,
-    topTaper: 0.5,
-    gravity: 0.1,
-    wobble: 0.08,
-    barkColor: "#55452f",
-    leaves: {
-      minOrder: 0,
-      cardsPerNode: 3,
-      cardSize: 1.5,
-      spread: 0.45,
-      texture: "broadleaf",
-      color: "#3d6b40",
     },
   },
 ]
