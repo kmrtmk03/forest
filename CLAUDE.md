@@ -73,11 +73,13 @@ src/
     ├── core/                    # Viewport（サイズ監視）・Ticker（ループ）など
     ├── controls/                # ScrollController・CameraController・controls.constants.ts
     ├── curvature/               # 擬似球面の曲げ変換（GLSL と TS）
-    ├── world/                   # World・Ground・配置物・world.constants.ts
+    ├── world/                   # World・Ground・Atmosphere・配置物・world.constants.ts
+    ├── procedural/              # 道の蛇行・地面の起伏など、Three.js 非依存の計算（TS 版）
+    ├── shaders/                 # 地面・空の GLSL（地面の起伏は procedural/ の TS 版と同じ式）
     └── debug/                   # ?debug 時だけ動的 import するデバッグ GUI
 ```
 
-- 計画書 §19 の構成に従ってファイルを増やす。予定のディレクトリ（`procedural/` `orbs/` `assets/` `shaders/` など）は、その Phase で必要になってから作る
+- 計画書 §19 の構成に従ってファイルを増やす。予定のディレクトリ（`orbs/` `assets/` など）は、その Phase で必要になってから作る
 - import は `@/*`（`src/*`）エイリアスを使う。同じディレクトリ内の参照は相対パスでよい
 - 3D 用のアセットは `public/models/`・`public/textures/`、モーダル用の画像は `src/assets/` に置く
 
@@ -93,6 +95,9 @@ src/
   - そのメッシュは `frustumCulled = false` にする
   - 独自のシェーダー改変は `options.patchShader` で行い、`options.cacheKey` を固有の値にする
 - オーブの位置計算などで TS 版の曲げ変換を追加するときは、`curvature.glsl` と **同じ式** にする。片方だけ変えない
+- 地面の起伏・道の中心線も同様に、`procedural/path.utils.ts` と `shaders/ground.glsl` を同じ式に保つ。定数は `path.constants.ts` から `material.defines` で GLSL へ渡す
+- 標準チャンクへの差し込みは `shaders/shaderChunk.utils.ts` の `insertAfterShaderChunk` / `replaceShaderChunk` を使う（チャンクが見つからなければ例外になる）。GLSL のコメントに `#include <...>` の文字列を書かない（置換に巻き込まれてコンパイルエラーになる）
+- 曲げ変換を使うマテリアルの霧は、ビューの奥行きではなくカメラからの直線距離で掛かる（`applyCurvature` が fog_vertex を置き換える）
 
 ### ループ（円環座標）
 

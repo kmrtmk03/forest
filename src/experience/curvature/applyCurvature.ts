@@ -1,6 +1,8 @@
 import { Vector2 } from "three"
 import type { IUniform, Material, WebGLProgramParametersWithUniforms } from "three"
 
+import { insertAfterShaderChunk, replaceShaderChunk } from "@/experience/shaders/shaderChunk.utils"
+
 import curvatureShader from "./curvature.glsl?raw"
 
 /** 擬似球面の曲げ変換で全マテリアルが共有する uniform */
@@ -80,17 +82,25 @@ const NORMAL_VERTEX = /* glsl */ `
   transformedNormal = normalize((viewMatrix * vec4(curvatureWorldNormal, 0.0)).xyz);
 `
 
+/**
+ * 標準の fog_vertex を置き換える GLSL。
+ * 標準の霧はビュー空間の奥行き（-mvPosition.z）で濃さを決めるため、画面の端ほど実際の距離より薄く掛かる。
+ * 描画はカメラから ±COURSE_LENGTH / 2 で折り返し、物が 1 周の反対側へ切り替わるため、
+ * 画面の端でもその手前で完全に霧へ溶けるよう、カメラからの直線距離を使う
+ */
+const FOG_VERTEX = /* glsl */ `
+  #ifdef USE_FOG
+    vFogDepth = length(mvPosition.xyz);
+  #endif
+`
+
 /** フラグメントシェーダーへ差し込む宣言。curvature.glsl の varying と同じ名前・型にする */
 const FRAGMENT_PARS = /* glsl */ `varying vec2 vCourseCoord;`
-
-/** 差し込み先の標準チャンク */
-const COMMON_CHUNK = "#include <common>"
-const DEFAULT_NORMAL_CHUNK = "#include <defaultnormal_vertex>"
-const PROJECT_VERTEX_CHUNK = "#include <project_vertex>"
 
 /**
  * マテリアルに擬似球面の曲げ変換を差し込む。
  * 頂点がシェーダー内で大きく動くため、このマテリアルを使うメッシュは frustumCulled = false にすること。
+ * 霧はビューの奥行きではなく、カメラからの直線距離で掛かるようになる（FOG_VERTEX を参照）。
  *
  * MEMO: worldpos_vertex（環境マップ・影で使用）は曲げていない。影や環境マップを使う場合は別途対応が必要
  */
@@ -103,16 +113,13 @@ export const applyCurvature = <TMaterial extends Material>(
     // uniform は同じオブジェクトを共有させる（値をコピーしない）
     Object.assign(shader.uniforms, uniforms)
 
-    shader.vertexShader = shader.vertexShader
-      .replace(COMMON_CHUNK, `${COMMON_CHUNK}\n${curvatureShader}`)
-      .replace(DEFAULT_NORMAL_CHUNK, `${DEFAULT_NORMAL_CHUNK}\n${NORMAL_VERTEX}`)
-      .replace(PROJECT_VERTEX_CHUNK, PROJECT_VERTEX)
+    let vertexShader = insertAfterShaderChunk(shader.vertexShader, "common", curvatureShader)
+    vertexShader = insertAfterShaderChunk(vertexShader, "defaultnormal_vertex", NORMAL_VERTEX)
+    vertexShader = replaceShaderChunk(vertexShader, "project_vertex", PROJECT_VERTEX)
+    shader.vertexShader = replaceShaderChunk(vertexShader, "fog_vertex", FOG_VERTEX)
 
     // フラグメント側ではコース座標（地面の模様など）だけを参照できるようにする
-    shader.fragmentShader = shader.fragmentShader.replace(
-      COMMON_CHUNK,
-      `${COMMON_CHUNK}\n${FRAGMENT_PARS}`,
-    )
+    shader.fragmentShader = insertAfterShaderChunk(shader.fragmentShader, "common", FRAGMENT_PARS)
 
     options.patchShader?.(shader)
   }
