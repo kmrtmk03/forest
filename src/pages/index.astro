@@ -1,0 +1,54 @@
+---
+const pageTitle = "Forest"
+---
+
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width" />
+    <meta name="description" content="Astro と Vite で構築したフロントエンド開発環境" />
+    <title>{pageTitle}</title>
+  </head>
+  <body>
+    <main>
+      <p>Astro + Vite</p>
+      <h1>開発環境の準備ができました</h1>
+      <p>
+        <code>pnpm dev</code> で開発サーバーを起動できます。
+      </p>
+    </main>
+  </body>
+</html>
+
+<style>
+  :global(*) {
+    box-sizing: border-box;
+  }
+
+  :global(body) {
+    display: grid;
+    min-width: 320px;
+    min-height: 100vh;
+    margin: 0;
+    place-items: center;
+    background: #f3f8f2;
+    color: #183024;
+    font-family: system-ui, sans-serif;
+  }
+
+  main {
+    max-width: 42rem;
+    padding: 2rem;
+  }
+
+  p:first-child {
+    margin: 0;
+    color: #45624d;
+    font-weight: 700;
+  }
+
+  h1 {
+    margin: 0.5rem 0;
+  }
+</style>
