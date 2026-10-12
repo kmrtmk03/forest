@@ -8,9 +8,10 @@ export const COURSE_LENGTH = 400
 
 /**
  * 見た目の惑星半径（m）。コース長とは独立した値で、湾曲の強さだけを決める。
- * MEMO: Phase 1 で PLANET_RADIUS_CANDIDATES と見比べて最終値を決める
+ * Phase 1 で候補を見比べ、デフォルメの効いた小惑星らしさを優先して 63.7m（赤道 400m の実球体と同じ）に決めた。
+ * この半径では地平線が約 14.5m 先、高さ 8m の木が見え始めるのは約 46m 先になる
  */
-export const PLANET_RADIUS = 150
+export const PLANET_RADIUS = 63.7
 
 /** デバッグ GUI で切り替えて見比べる惑星半径の候補（m）。63.7m は赤道 400m の実球体に相当 */
 export const PLANET_RADIUS_CANDIDATES = [63.7, 150, 300] as const
