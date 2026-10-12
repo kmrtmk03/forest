@@ -6,10 +6,17 @@ settings:
 
 importers:
   .:
+    dependencies:
+      three:
+        specifier: ^0.186.1
+        version: 0.186.1
     devDependencies:
       "@astrojs/check":
         specifier: latest
         version: 0.9.10(@emnapi/runtime@1.11.3)(prettier-plugin-astro@1.1.1(@emnapi/core@1.11.3)(@emnapi/runtime@1.11.3)(prettier@3.9.10))(prettier@3.9.10)(typescript@6.0.3)
+      "@types/three":
+        specifier: ^0.186.0
+        version: 0.186.0
       astro:
         specifier: latest
         version: 7.3.8(yaml@2.9.1)
@@ -426,6 +433,12 @@ packages:
         integrity: sha512-dlT1m5e/0yUL0kRNcQn7yGLVThkgbB0Ga/1AmfDDC/8ik6AIiSf2QLQO2zPYvefsHP0aFgxO93cVLCCfDp7kzQ==,
       }
     engines: { node: ">= 20.12.0" }
+
+  "@dimforge/rapier3d-compat@0.12.0":
+    resolution:
+      {
+        integrity: sha512-uekIGetywIgopfD97oDL5PfeezkFpNhwlzlaEYNOA0N6ghdsOvh/HYjSMek5Q2O1PYvRSDFcqFVJl4r4ZBwOow==,
+      }
 
   "@emmetio/abbreviation@2.3.3":
     resolution:
@@ -994,6 +1007,12 @@ packages:
         integrity: sha512-83yeghZ2xxin3Nj8z1NMd/NCuca+gsYXswywDy5bHvwlWL8tpTQmzGeUuHd9FC3E/SBEMvzJRwWEOz5gGes9Qg==,
       }
 
+  "@tweenjs/tween.js@23.1.3":
+    resolution:
+      {
+        integrity: sha512-vJmvvwFxYuGnF2axRtPYocag6Clbb5YS7kLL+SO/TeVFzHqDIWrNKYtcsPMibjDx9O+bu+psAy9NKfWklassUA==,
+      }
+
   "@tybys/wasm-util@0.10.4":
     resolution:
       {
@@ -1030,10 +1049,28 @@ packages:
         integrity: sha512-vSYNSDe6Ix3q+6Z7ri9lyWqgGhJTmzRjZRqyq15N0Z/1/UnVsno9G/N40NBijoYx2seFDIl0+B2mgAb9mezUCA==,
       }
 
+  "@types/stats.js@0.17.4":
+    resolution:
+      {
+        integrity: sha512-jIBvWWShCvlBqBNIZt0KAshWpvSjhkwkEu4ZUcASoAvhmrgAUI2t1dXrjSL4xXVLB4FznPrIsX3nKXFl/Dt4vA==,
+      }
+
+  "@types/three@0.186.0":
+    resolution:
+      {
+        integrity: sha512-mxYSBpDC+D0pLfSP6sW4WZTcT+nrtmZcimMqnVmy36Hte3XpeYSrvgg4TRdaM1GemGog1AWzI5qL2VoIfMXbJQ==,
+      }
+
   "@types/unist@3.0.3":
     resolution:
       {
         integrity: sha512-ko/gIFJRv177XgZsZcBwnqJN5x/Gien8qNOn0D5bQU/zAzVf9Zt3BlcUiLqhV9y4ARk0GbT3tnUiPNgnTXzc/Q==,
+      }
+
+  "@types/webxr@0.5.24":
+    resolution:
+      {
+        integrity: sha512-h8fgEd/DpoS9CBrjEQXR+dIDraopAEfu4wYVNY2tEPwk60stPWhvZMf4Foo5FakuQ7HFZoa8WceaWFervK2Ovg==,
       }
 
   "@ungap/structured-clone@1.4.0":
@@ -1473,6 +1510,12 @@ packages:
       picomatch:
         optional: true
 
+  fflate@0.8.3:
+    resolution:
+      {
+        integrity: sha512-tbZNuJrLwGUp3zshBtdy4W+ORxZuIh8a5ilyIEQDC5rY1f3U20JMry0Ll3WBzU58EZKsEuJFXhb5gwv8CsPvgA==,
+      }
+
   find-proc@0.2.0:
     resolution:
       {
@@ -1762,6 +1805,12 @@ packages:
     resolution:
       {
         integrity: sha512-9Yubnt3e8A0OKwxYSXyhLymGW4sCufcLG6VdiDdUGVkPhpqLxlvP5vl1983gQjJl3tqbrM731mjaZaP68AgosQ==,
+      }
+
+  meshoptimizer@1.1.1:
+    resolution:
+      {
+        integrity: sha512-oRFNWJRDA/WTrVj7NWvqa5HqE1t9MYDj2VaWirQCzCCrAd2GHrqR/sQezCxiWATPNlKTcRaPRHPJwIRoPBAp5g==,
       }
 
   micromark-util-character@2.1.1:
@@ -2183,6 +2232,12 @@ packages:
       }
     engines: { node: ">=16" }
     hasBin: true
+
+  three@0.186.1:
+    resolution:
+      {
+        integrity: sha512-blFeqb49wRCSGUGj7gtpfnSGHy2lwDk94RhUmS1c/hTby70kvChbWpkJ4Pm1390LqzzvTmzgXKHPEafJwCb8jA==,
+      }
 
   tiny-inflate@1.0.3:
     resolution:
@@ -2943,6 +2998,8 @@ snapshots:
       fast-wrap-ansi: 0.2.2
       sisteransi: 1.0.5
 
+  "@dimforge/rapier3d-compat@0.12.0": {}
+
   "@emmetio/abbreviation@2.3.3":
     dependencies:
       "@emmetio/scanner": 1.0.4
@@ -3217,6 +3274,8 @@ snapshots:
 
   "@shikijs/vscode-textmate@10.0.2": {}
 
+  "@tweenjs/tween.js@23.1.3": {}
+
   "@tybys/wasm-util@0.10.4":
     dependencies:
       tslib: 2.8.1
@@ -3239,7 +3298,20 @@ snapshots:
     dependencies:
       "@types/unist": 3.0.3
 
+  "@types/stats.js@0.17.4": {}
+
+  "@types/three@0.186.0":
+    dependencies:
+      "@dimforge/rapier3d-compat": 0.12.0
+      "@tweenjs/tween.js": 23.1.3
+      "@types/stats.js": 0.17.4
+      "@types/webxr": 0.5.24
+      fflate: 0.8.3
+      meshoptimizer: 1.1.1
+
   "@types/unist@3.0.3": {}
+
+  "@types/webxr@0.5.24": {}
 
   "@ungap/structured-clone@1.4.0": {}
 
@@ -3551,6 +3623,8 @@ snapshots:
     optionalDependencies:
       picomatch: 4.0.7
 
+  fflate@0.8.3: {}
+
   find-proc@0.2.0: {}
 
   flattie@1.1.1: {}
@@ -3702,6 +3776,8 @@ snapshots:
   mdn-data@2.0.28: {}
 
   mdn-data@2.27.1: {}
+
+  meshoptimizer@1.1.1: {}
 
   micromark-util-character@2.1.1:
     dependencies:
@@ -3970,6 +4046,8 @@ snapshots:
       csso: 5.0.5
       picocolors: 1.1.1
       sax: 1.6.1
+
+  three@0.186.1: {}
 
   tiny-inflate@1.0.3: {}
 
