@@ -63,7 +63,10 @@ export class Experience {
   async start(): Promise<void> {
     await this.renderer.compileAsync(this.world.scene, this.cameraController.camera)
     const debug = Debug.isRequested()
-      ? await Debug.create(this.world.curvatureUniforms.uPlanetRadius)
+      ? await Debug.create({
+          radiusUniform: this.world.curvatureUniforms.uPlanetRadius,
+          fog: this.world.atmosphere.fog,
+        })
       : null
     // 待っている間にページを離れた場合は、何も始めない
     if (this.isDestroyed) {

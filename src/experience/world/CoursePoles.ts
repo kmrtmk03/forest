@@ -2,6 +2,7 @@ import { Color, CylinderGeometry, InstancedMesh, Matrix4, MeshLambertMaterial } 
 
 import { applyCurvature } from "@/experience/curvature/applyCurvature"
 import type { ICurvatureUniforms } from "@/experience/curvature/applyCurvature"
+import { groundHeight } from "@/experience/procedural/path.utils"
 
 import { COURSE_LENGTH, PATH_HALF_WIDTH } from "./world.constants"
 
@@ -54,11 +55,13 @@ export class CoursePoles {
     const poleX = PATH_HALF_WIDTH + POLE_OFFSET_FROM_PATH
 
     // インスタンス行列の平行移動にコース座標を入れる（平面ワールド座標では z = -s）
+    // 根元の高さは地面の起伏（GLSL 版と同じ式の TS 版）に合わせる
     for (let index = 0; index < polesPerSide; index++) {
       const s = index * POLE_INTERVAL
       sides.forEach((side, sideIndex) => {
         const instanceIndex = index * sides.length + sideIndex
-        matrix.makeTranslation(side * poleX, 0, -s)
+        const x = side * poleX
+        matrix.makeTranslation(x, groundHeight(x, s), -s)
         this.mesh.setMatrixAt(instanceIndex, matrix)
         this.mesh.setColorAt(instanceIndex, s === 0 ? originColor : poleColor)
       })

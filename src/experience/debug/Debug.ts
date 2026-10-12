@@ -1,4 +1,4 @@
-import type { IUniform } from "three"
+import type { Fog, IUniform } from "three"
 import type GUI from "three/addons/libs/lil-gui.module.min.js"
 import type Stats from "three/addons/libs/stats.module.js"
 
@@ -7,6 +7,19 @@ import { PLANET_RADIUS_CANDIDATES } from "@/experience/world/world.constants"
 /** 惑星半径スライダーの範囲（m） */
 const PLANET_RADIUS_MIN = 40
 const PLANET_RADIUS_MAX = 400
+
+/** 霧の距離スライダーの範囲（m）。上限はカメラの far（FOG_FAR + 60m）より手前に収める */
+const FOG_DISTANCE_MIN = 0
+const FOG_DISTANCE_MAX = 80
+const FOG_DISTANCE_STEP = 0.5
+
+/** デバッグ GUI から調整する対象 */
+interface IDebugTargets {
+  /** 惑星半径の uniform（曲げ変換の共有 uniform をそのまま渡す） */
+  radiusUniform: IUniform<number>
+  /** シーンの霧（Atmosphere の fog をそのまま渡す） */
+  fog: Fog
+}
 
 /** デバッグ表示で読み取る現在値 */
 interface IDebugReadouts {
@@ -28,7 +41,7 @@ export class Debug {
   private constructor(
     private readonly gui: GUI,
     private readonly stats: Stats,
-    radiusUniform: IUniform<number>,
+    { radiusUniform, fog }: IDebugTargets,
   ) {
     document.body.append(stats.dom)
 
@@ -39,6 +52,15 @@ export class Debug {
       .add(radiusUniform, "value", PLANET_RADIUS_MIN, PLANET_RADIUS_MAX, 0.1)
       .name("radius (m)")
       .listen()
+
+    // 霧の距離: 地平線・折り返し位置（50m）との兼ね合いを見ながら調整する
+    const atmosphere = gui.addFolder("Atmosphere")
+    atmosphere
+      .add(fog, "near", FOG_DISTANCE_MIN, FOG_DISTANCE_MAX, FOG_DISTANCE_STEP)
+      .name("fog near (m)")
+    atmosphere
+      .add(fog, "far", FOG_DISTANCE_MIN, FOG_DISTANCE_MAX, FOG_DISTANCE_STEP)
+      .name("fog far (m)")
 
     const status = gui.addFolder("Status")
     status.add(this.readouts, "distance").decimals(2).listen().disable()
@@ -53,14 +75,14 @@ export class Debug {
 
   /**
    * lil-gui と stats を動的 import してデバッグ表示を作る
-   * @param radiusUniform GUI から調整する惑星半径の uniform（曲げ変換の共有 uniform をそのまま渡す）
+   * @param targets GUI から調整する対象（値を直接書き換えるため、コピーではなく実物を渡す）
    */
-  static async create(radiusUniform: IUniform<number>): Promise<Debug> {
+  static async create(targets: IDebugTargets): Promise<Debug> {
     const [{ default: GUIClass }, { default: StatsClass }] = await Promise.all([
       import("three/addons/libs/lil-gui.module.min.js"),
       import("three/addons/libs/stats.module.js"),
     ])
-    return new Debug(new GUIClass({ title: "Forest debug" }), new StatsClass(), radiusUniform)
+    return new Debug(new GUIClass({ title: "Forest debug" }), new StatsClass(), targets)
   }
 
   /** 毎フレームの表示更新。Experience のループの最後に呼ぶ */
