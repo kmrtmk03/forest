@@ -2,3 +2,7 @@ node_modules/
 .pnpm-store/
 .astro/
 dist/
+
+# メモ・計画書（手書きの Markdown のため整形対象外）
+.memo/
+.plan/
