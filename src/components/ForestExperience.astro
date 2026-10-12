@@ -1,0 +1,108 @@
+---
+/**
+ * Three.js の森を全画面に描画するコンポーネント。
+ * 初期化はクライアント側のカスタム要素 <forest-experience> が行い、要素が DOM から外れたら破棄する。
+ */
+---
+
+<forest-experience>
+  <canvas class="canvas" aria-hidden="true"></canvas>
+  <p class="message" role="alert">
+    お使いのブラウザでは 3D 表示を開始できませんでした。WebGL に対応したブラウザでご覧ください。
+  </p>
+  <noscript>
+    <p class="noscript">このサイトの表示には JavaScript が必要です。</p>
+  </noscript>
+</forest-experience>
+
+<script>
+  import { Experience } from "@/experience/Experience"
+
+  /**
+   * Experience の生成と破棄をカスタム要素のライフサイクルに結び付ける。
+   * disconnectedCallback が唯一のクリーンアップの入口になる。
+   */
+  class ForestExperienceElement extends HTMLElement {
+    private experience: Experience | null = null
+
+    connectedCallback(): void {
+      try {
+        this.experience = new Experience(this)
+      } catch (error) {
+        this.showError(error)
+        return
+      }
+      this.experience.start().catch((error: unknown) => this.showError(error))
+    }
+
+    disconnectedCallback(): void {
+      this.experience?.destroy()
+      this.experience = null
+    }
+
+    /** WebGL を使えないなどで起動できなかったとき、メッセージを表示する（原因は開発者向けにコンソールへ残す） */
+    private showError(error: unknown): void {
+      console.error(error)
+      this.experience?.destroy()
+      this.experience = null
+      this.dataset.state = "error"
+    }
+  }
+
+  // 同じページで二重に定義すると例外になるため、未定義のときだけ登録する
+  if (!customElements.get("forest-experience")) {
+    customElements.define("forest-experience", ForestExperienceElement)
+  }
+</script>
+
+<style>
+  forest-experience {
+    position: fixed;
+    z-index: 0;
+    display: block;
+    inset: 0;
+    /* ブラウザの引っ張り更新・戻るジェスチャ・ピンチを抑止し、タッチを移動操作に使う */
+    overscroll-behavior: none;
+    touch-action: none;
+  }
+
+  .canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    transition: opacity 1.2s ease;
+  }
+
+  /* 初期化（シェーダーのコンパイル）が終わってからフェードインする */
+  forest-experience[data-state="ready"] .canvas {
+    opacity: 1;
+  }
+
+  .message,
+  .noscript {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: min(90%, 32rem);
+    margin: 0;
+    color: #f2f5ef;
+    line-height: 1.7;
+    text-align: center;
+    transform: translate(-50%, -50%);
+  }
+
+  .message {
+    display: none;
+  }
+
+  forest-experience[data-state="error"] .message {
+    display: block;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .canvas {
+      transition: none;
+    }
+  }
+</style>
