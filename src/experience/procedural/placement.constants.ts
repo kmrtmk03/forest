@@ -26,36 +26,39 @@ export const CLEARING_SEED_OFFSET = 7919
 
 /**
  * 配置する最も遠い距離（m）。地面メッシュ（±48m）の内側に収め、根元の下に必ず地面があるようにする。
- * これより先は霧（FOG_FAR 45m）で見えない
+ * 道から 36m 先は、手前の木に隠れるうえ霧（FOG_NEAR 8m / FOG_FAR 45m）が 8 割近く掛かるため、
+ * それより遠くには置かずにポリゴン数を抑える（木 1 本 約 700〜800 ポリゴン）
  */
-const MAX_PROP_DISTANCE = 42
+const MAX_PROP_DISTANCE = 36
 
 /**
- * 木のルール。モデルの高さは最大約 6.5m、拡大率 1.3 倍で約 8.45m。
- * 起伏（最大 1.2m）を足しても約 9.9m 未満に収め、ループの折り返し地点で頭が突然現れないようにする。
- * 道の縁から密に生やし、空き地も控えめにして、樹冠が重なり合う鬱蒼とした森にする
+ * 木のルール。モデルの高さは 9.5m（world/fractalTree.constants.ts）で、拡大率と縦の伸びを掛けると 約 7.3〜13.1m になる。
+ * 高い木でも、新しいチャンクが入る 45m 先では霧で完全に見えない（fractalTree.constants.ts の説明を参照）。
+ * 道の縁から密に生やし、樹冠が重なり合って道の上にも張り出す、鬱蒼とした森にする
  */
 const TREE_RULE: IPlacementRule = {
   kind: "tree",
   cellSize: 2.5,
   jitterRatio: 0.4,
-  minDistanceFromPath: 3.5,
+  // 幹（拡大後の半径 約 0.45m）が道（半幅 1.2m、縁のギザギザ込みで 約 1.45m）にかからない距離。
+  // 枝と葉は頭上 3m より上から始まるので、ここまで寄せても道の上を歩くカメラには当たらない
+  minDistanceFromPath: 2,
   maxDistanceFromPath: MAX_PROP_DISTANCE,
   densityCurve: [
-    [3.5, 0.5],
-    [8, 0.7],
-    [12, 0.9],
-    [MAX_PROP_DISTANCE, 0.9],
+    [2, 0.55],
+    [8, 0.75],
+    [12, 0.85],
+    [MAX_PROP_DISTANCE, 0.85],
   ],
-  clearingStrength: 0.5,
-  // モデル番号は「種類 × 2 + 形」（world/fractalTreeModels.utils.ts）。種類ごとに 2 つの形を同じ割合で混ぜる
-  // 0, 1: 針葉樹（計 0.45）、2, 3: 広葉樹（計 0.35）、4, 5: 細長い木（計 0.2）
-  variantWeights: [0.225, 0.225, 0.175, 0.175, 0.1, 0.1],
-  scaleRange: [0.8, 1.3],
+  clearingStrength: 0.4,
+  // モデル番号は「種類 × 2 + 形」（world/fractalTreeModels.utils.ts）。いまは 1 種類 × 2 つの形
+  variantWeights: [0.5, 0.5],
+  scaleRange: [0.85, 1.2],
+  heightScaleRange: [0.9, 1.15],
   maxTiltDegrees: 3,
   tintRange: [0.8, 1.15],
-  // 木同士の幹は 1.2m 以上離す。ジッターだけだと隣のセルの木と 0.5m まで近づき、1 本から幹が 2 本生えたように見える
-  clearance: 0.6,
+  // 木同士の幹は 1.4m 以上離す。ジッターだけだと隣のセルの木と 0.5m まで近づき、1 本から幹が 2 本生えたように見える
+  clearance: 0.7,
   // 地面は 2m 間隔の頂点で起伏を近似しているため、TS の groundHeight と最大約 0.07m 食い違う。
   // それに加え、斜面では幹の縁の片側が持ち上がるので、余裕を持って埋める
   rootSink: 0.25,
@@ -79,9 +82,10 @@ const ROCK_RULE: IPlacementRule = {
   // 0: 角ばった岩、1: 丸みのある岩
   variantWeights: [0.6, 0.4],
   scaleRange: [0.5, 1.4],
+  heightScaleRange: [0.8, 1.2],
   maxTiltDegrees: 15,
   tintRange: [0.85, 1.1],
-  // 木の根元から 1.5m、岩同士は 1.8m 離し、岩が幹を貫いて見えないようにする
+  // 木の根元から 1.6m、岩同士は 1.8m 離し、岩が幹を貫いて見えないようにする
   clearance: 0.9,
   rootSink: 0.15,
   seedOffset: 104729,

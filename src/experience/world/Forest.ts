@@ -196,7 +196,7 @@ export class Forest {
         position.set(placement.x, placement.height, -placement.s)
         rotation.set(placement.tilt, placement.rotationY, 0)
         quaternion.setFromEuler(rotation)
-        scale.setScalar(placement.scale)
+        scale.set(placement.scale, placement.scale * placement.heightScale, placement.scale)
         return {
           key,
           matrix: new Matrix4().compose(position, quaternion, scale),

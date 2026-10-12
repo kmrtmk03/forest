@@ -119,6 +119,7 @@ const placeInCell = (
   const scale = randomRange(random, ...rule.scaleRange)
   const tilt = MathUtils.degToRad(randomRange(random, -rule.maxTiltDegrees, rule.maxTiltDegrees))
   const tint = randomRange(random, ...rule.tintRange)
+  const heightScale = randomRange(random, ...rule.heightScaleRange)
 
   return {
     kind: rule.kind,
@@ -128,6 +129,7 @@ const placeInCell = (
     height: groundHeight(x, s) - rule.rootSink,
     rotationY,
     scale,
+    heightScale,
     tilt,
     tint,
   }
