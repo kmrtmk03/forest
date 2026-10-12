@@ -28,14 +28,26 @@ export class World {
   /** カメラのコース s（COURSE_LENGTH で折り返した値） */
   private cameraS = 0
 
-  /** @throws 配置物の設定が不正な場合（Forest のコンストラクタを参照） */
+  /**
+   * @throws 地面・配置物の設定が不正な場合（Ground・Forest のコンストラクタを参照）。
+   *   例外を投げるときは、それまでに作った物を破棄してから投げる
+   */
   constructor() {
     // 背景は空の球が描くため scene.background は使わない。空の地平線付近は霧と同じ色にしてある
     this.scene.fog = this.atmosphere.fog
     this.scene.add(this.atmosphere.group)
 
-    this.ground = new Ground(this.curvatureUniforms)
-    this.forest = new Forest(this.curvatureUniforms)
+    // Ground・Forest は失敗したとき自分の作った分を破棄するので、ここではそれより前に作った物だけを破棄する
+    let ground: Ground | null = null
+    try {
+      ground = new Ground(this.curvatureUniforms)
+      this.ground = ground
+      this.forest = new Forest(this.curvatureUniforms)
+    } catch (error) {
+      ground?.dispose()
+      this.atmosphere.dispose()
+      throw error
+    }
     this.scene.add(this.ground.mesh, this.forest.group)
   }
 

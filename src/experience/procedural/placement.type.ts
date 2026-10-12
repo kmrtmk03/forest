@@ -58,6 +58,11 @@ export interface IPlacementRule {
   maxTiltDegrees: number
   /** 色の明るさの倍率の範囲 [最小, 最大] */
   tintRange: readonly [number, number]
+  /**
+   * 他の配置物との間に空ける半径（m）。2 つの物の根元は、互いの clearance の合計より近づけない。
+   * 近い物を探すのは前後のチャンクだけなので、CHUNK_LENGTH の半分以下にする（起動時に検証する）
+   */
+  clearance: number
   /** 根元を地面に埋める深さ（m）。起伏の上で浮かないようにする */
   rootSink: number
   /** 種類ごとに乱数をずらすための値。同じセルでも木と岩で別の乱数列にする */

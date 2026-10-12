@@ -48,12 +48,20 @@ export class Experience {
       antialias: true,
       powerPreference: "high-performance",
     })
-    this.cameraController = new CameraController()
-    this.world = new World()
-    this.scrollController = new ScrollController(host, signal)
-    // Viewport は生成時に 1 回 handleResize を呼ぶため、renderer と camera の生成後に作る
-    this.viewport = new Viewport(host, signal, this.handleResize)
-    this.ticker = new Ticker(this.renderer, signal, this.handleTick)
+    try {
+      this.cameraController = new CameraController()
+      this.world = new World()
+      this.scrollController = new ScrollController(host, signal)
+      // Viewport は生成時に 1 回 handleResize を呼ぶため、renderer と camera の生成後に作る
+      this.viewport = new Viewport(host, signal, this.handleResize)
+      this.ticker = new Ticker(this.renderer, signal, this.handleTick)
+    } catch (error) {
+      // 生成に失敗すると呼び出し側は destroy() を呼べないため、ここまでに作ったリスナーとレンダラーを解放する。
+      // World は自分の中で失敗したときに、作った分を破棄してから例外を投げる
+      this.abortController.abort()
+      this.renderer.dispose()
+      throw error
+    }
   }
 
   /**

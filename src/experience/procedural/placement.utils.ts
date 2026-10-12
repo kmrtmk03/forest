@@ -1,5 +1,6 @@
 import { MathUtils } from "three"
 
+import { assertDividesCourseLength, wrapSignedCourse } from "@/experience/world/course.utils"
 import { CHUNK_LENGTH, COURSE_LENGTH } from "@/experience/world/world.constants"
 
 import { periodicValueNoise } from "./noise.utils"
@@ -16,11 +17,37 @@ import type {
   IPropPlacement,
   TDensityPoint,
   TPlacementChunks,
+  TPropKind,
 } from "./placement.type"
 import { hash2, mulberry32, pickWeightedIndex, randomRange } from "./random.utils"
 
 /** 1 周のチャンク数（COURSE_LENGTH = 100、CHUNK_LENGTH = 5 なら 20） */
 export const CHUNK_COUNT = COURSE_LENGTH / CHUNK_LENGTH
+
+/** 種類ごとの clearance（近い物を探すときに、相手の種類から引く） */
+const CLEARANCE_BY_KIND = new Map<TPropKind, number>(
+  PLACEMENT_RULES.map(({ kind, clearance }) => [kind, clearance]),
+)
+
+/**
+ * 配置の設定が 1 周の長さと矛盾していないか検証する。配置を生成する前（起動時）に一度だけ呼ぶこと。
+ * 割り切れないチャンク長だと、チャンクの配列の長さが切り捨てられて範囲外へ書き込んでしまい、
+ * 割り切れないセル幅だと、0m 付近でセルが重なったり抜けたりする
+ * @throws 設定が矛盾している場合
+ */
+export const assertPlacementSettings = (): void => {
+  assertDividesCourseLength("placement: CHUNK_LENGTH", CHUNK_LENGTH)
+  assertDividesCourseLength("placement: CLEARING_NOISE_CELL", CLEARING_NOISE_CELL)
+  PLACEMENT_RULES.forEach(({ kind, cellSize, clearance }) => {
+    assertDividesCourseLength(`placement: ${kind} の cellSize`, cellSize)
+    // 近い物は前後のチャンクだけから探すため、2 つの物の clearance の合計がチャンク長を超えてはいけない
+    if (clearance * 2 > CHUNK_LENGTH) {
+      throw new Error(
+        `placement: ${kind} の clearance（${clearance}m）が CHUNK_LENGTH の半分を超えています`,
+      )
+    }
+  })
+}
 
 /**
  * 道からの距離に応じた基本密度を、対応点の間の直線補間で求める。
@@ -107,8 +134,36 @@ const placeInCell = (
 }
 
 /**
+ * すでに置いた物のどれかに近すぎるか判定する。
+ * 自分のチャンクと前後のチャンクだけを調べる（clearance の合計はチャンク長以下に検証済み）。
+ * 1 周の境界をまたぐ距離は、折り返した差で測る
+ * @param chunks これまでに置いた配置
+ * @param candidate 置こうとしている物
+ * @param clearance 置こうとしている物の clearance（m）
+ */
+const isTooCloseToPlaced = (
+  chunks: TPlacementChunks,
+  candidate: IPropPlacement,
+  clearance: number,
+): boolean => {
+  const chunk = Math.floor(candidate.s / CHUNK_LENGTH)
+  for (let offset = -1; offset <= 1; offset++) {
+    const neighbors = chunks[MathUtils.euclideanModulo(chunk + offset, CHUNK_COUNT)]
+    const isTooClose = neighbors.some((other) => {
+      const minDistance = clearance + (CLEARANCE_BY_KIND.get(other.kind) ?? 0)
+      const deltaX = other.x - candidate.x
+      const deltaS = wrapSignedCourse(other.s - candidate.s)
+      return deltaX * deltaX + deltaS * deltaS < minDistance * minDistance
+    })
+    if (isTooClose) return true
+  }
+  return false
+}
+
+/**
  * 1 周分のすべての配置物を生成し、チャンクごとに分けて返す（計画書 §11-3 のジッター付きグリッド + 密度関数）。
- * 起動時と seed の変更時に 1 回だけ呼ぶ。毎フレーム呼ばないこと
+ * PLACEMENT_RULES の順（木 → 岩）に置き、後から置く物ほど先に置いた物を避ける。
+ * 起動時と seed の変更時に 1 回だけ呼ぶ。毎フレーム呼ばないこと。事前に assertPlacementSettings で設定を検証すること
  * @param seed 世界の seed
  * @returns 添字がチャンク番号（0〜CHUNK_COUNT - 1）の配列
  */
@@ -124,6 +179,7 @@ export const generatePlacements = (seed: number): TPlacementChunks => {
       for (let cellX = -cellReachX; cellX < cellReachX; cellX++) {
         const placement = placeInCell(rule, cellX, cellS, seed)
         if (!placement) continue
+        if (isTooCloseToPlaced(chunks, placement, rule.clearance)) continue
         // s は [0, COURSE_LENGTH) に折り返し済みなので、チャンク番号は範囲内に収まる
         chunks[Math.floor(placement.s / CHUNK_LENGTH)].push(placement)
       }

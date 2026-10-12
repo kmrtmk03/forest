@@ -52,6 +52,8 @@ const TREE_RULE: IPlacementRule = {
   scaleRange: [0.8, 1.3],
   maxTiltDegrees: 3,
   tintRange: [0.8, 1.15],
+  // 木同士の幹は 1.2m 以上離す。ジッターだけだと隣のセルの木と 0.5m まで近づき、1 本から幹が 2 本生えたように見える
+  clearance: 0.6,
   // 地面は 2m 間隔の頂点で起伏を近似しているため、TS の groundHeight と最大約 0.07m 食い違う。
   // それに加え、斜面では幹の縁の片側が持ち上がるので、余裕を持って埋める
   rootSink: 0.25,
@@ -77,6 +79,8 @@ const ROCK_RULE: IPlacementRule = {
   scaleRange: [0.5, 1.4],
   maxTiltDegrees: 15,
   tintRange: [0.85, 1.1],
+  // 木の根元から 1.5m、岩同士は 1.8m 離し、岩が幹を貫いて見えないようにする
+  clearance: 0.9,
   rootSink: 0.15,
   seedOffset: 104729,
 }

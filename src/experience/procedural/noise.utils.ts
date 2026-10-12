@@ -4,9 +4,6 @@ import { COURSE_LENGTH } from "@/experience/world/world.constants"
 
 import { hash2ToUnit } from "./random.utils"
 
-/** セルの角の値を滑らかにつなぐ補間（3t² − 2t³。GLSL の smoothstep と同じ形） */
-const smoothBlend = (t: number): number => t * t * (3 - 2 * t)
-
 /**
  * コース方向に 1 周で途切れない value noise（0 以上 1 未満）。
  * コース方向のセル番号を 1 周のセル数で折り返すため、s と s + COURSE_LENGTH で同じ値になる。
@@ -35,8 +32,9 @@ export const periodicValueNoise = (
   const corner01 = hash2ToUnit(cellX, s1, seed)
   const corner11 = hash2ToUnit(cellX + 1, s1, seed)
 
-  const blendX = smoothBlend(scaledX - cellX)
-  const blendS = smoothBlend(scaledS - cellS)
+  // セルの角の値を滑らかにつなぐ（3t² − 2t³。ground.frag.glsl の value noise と同じ補間）
+  const blendX = MathUtils.smoothstep(scaledX - cellX, 0, 1)
+  const blendS = MathUtils.smoothstep(scaledS - cellS, 0, 1)
   return MathUtils.lerp(
     MathUtils.lerp(corner00, corner10, blendX),
     MathUtils.lerp(corner01, corner11, blendX),

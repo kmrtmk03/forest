@@ -43,6 +43,11 @@ interface ITrunkSize {
   height: number
 }
 
+/** 幹の寸法。高さは根元を埋める分（rootSink 0.25m）を含み、葉の下端に少し潜り込む長さにする */
+const FIR_TRUNK: ITrunkSize = { topRadius: 0.18, bottomRadius: 0.26, height: 1.6 }
+const BROADLEAF_TRUNK: ITrunkSize = { topRadius: 0.16, bottomRadius: 0.24, height: 2.6 }
+const POPLAR_TRUNK: ITrunkSize = { topRadius: 0.12, bottomRadius: 0.18, height: 1.4 }
+
 /** 原点を根元に置いた幹のジオメトリを作る */
 const createTrunkGeometry = ({ topRadius, bottomRadius, height }: ITrunkSize): BufferGeometry =>
   new CylinderGeometry(topRadius, bottomRadius, height, TRUNK_RADIAL_SEGMENTS).translate(
@@ -147,7 +152,7 @@ export const createPrimitivePropModels = (curvatureUniforms: ICurvatureUniforms)
       variant: 0,
       parts: [
         {
-          geometry: createTrunkGeometry({ topRadius: 0.18, bottomRadius: 0.26, height: 1.6 }),
+          geometry: createTrunkGeometry(FIR_TRUNK),
           material: trunkMaterial,
         },
         {
@@ -161,7 +166,7 @@ export const createPrimitivePropModels = (curvatureUniforms: ICurvatureUniforms)
       variant: 1,
       parts: [
         {
-          geometry: createTrunkGeometry({ topRadius: 0.16, bottomRadius: 0.24, height: 2.6 }),
+          geometry: createTrunkGeometry(BROADLEAF_TRUNK),
           material: trunkMaterial,
         },
         {
@@ -175,7 +180,7 @@ export const createPrimitivePropModels = (curvatureUniforms: ICurvatureUniforms)
       variant: 2,
       parts: [
         {
-          geometry: createTrunkGeometry({ topRadius: 0.12, bottomRadius: 0.18, height: 1.4 }),
+          geometry: createTrunkGeometry(POPLAR_TRUNK),
           material: trunkMaterial,
         },
         {
