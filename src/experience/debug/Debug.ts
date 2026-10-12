@@ -2,15 +2,19 @@ import type { Fog, IUniform } from "three"
 import type GUI from "three/addons/libs/lil-gui.module.min.js"
 import type Stats from "three/addons/libs/stats.module.js"
 
+import { CAMERA_FAR } from "@/experience/controls/controls.constants"
 import { PLANET_RADIUS_CANDIDATES } from "@/experience/world/world.constants"
 
 /** 惑星半径スライダーの範囲（m） */
 const PLANET_RADIUS_MIN = 40
 const PLANET_RADIUS_MAX = 400
 
-/** 霧の距離スライダーの範囲（m）。上限はカメラの far（FOG_FAR + 60m）より手前に収める */
+/**
+ * 霧の距離スライダーの範囲（m）。上限はカメラの far にする。
+ * far より先に霧の終端を置くと、霧に溶けきる前に物が far で切れて見えるため
+ */
 const FOG_DISTANCE_MIN = 0
-const FOG_DISTANCE_MAX = 80
+const FOG_DISTANCE_MAX = CAMERA_FAR
 const FOG_DISTANCE_STEP = 0.5
 
 /** デバッグ GUI から調整する対象 */

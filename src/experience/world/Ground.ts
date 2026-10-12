@@ -12,6 +12,7 @@ import {
 } from "@/experience/procedural/path.constants"
 import groundFragmentShader from "@/experience/shaders/ground.frag.glsl?raw"
 import groundShader from "@/experience/shaders/ground.glsl?raw"
+import { insertAfterShaderChunk } from "@/experience/shaders/shaderChunk.utils"
 
 import { COURSE_LENGTH, PATH_HALF_WIDTH } from "./world.constants"
 
@@ -39,8 +40,35 @@ const MOSS_COLOR = "#6f8a3c"
 const DIRT_DARK_COLOR = "#5e4b35"
 const DIRT_LIGHT_COLOR = "#8a7452"
 
-/** GLSL の float リテラルにする（整数でも小数点を付けないと int 扱いになる） */
-const toGlslFloat = (value: number): string => value.toFixed(4)
+/**
+ * 地面の模様のノイズのセルの大きさ（m）。ground.frag.glsl へ同名の #define で渡す。
+ * s 方向のセル番号を 1 周で折り返すため、すべて COURSE_LENGTH を割り切る値にする（コンストラクタで検証する）
+ */
+const GROUND_NOISE_CELLS = {
+  /** 苔のまだら（大きな濃淡） */
+  GROUND_MOSS_CELL: 10,
+  /** 草の茂みの濃淡 */
+  GROUND_TUFT_CELL: 1,
+  /** 土の小石・凹凸 */
+  GROUND_PEBBLE_CELL: 0.5,
+  /** 細かいざらつき */
+  GROUND_GRAIN_CELL: 0.25,
+  /** 道の縁の大きなうねり */
+  GROUND_EDGE_LARGE_CELL: 2,
+  /** 道の縁の細かい欠け */
+  GROUND_EDGE_SMALL_CELL: 0.25,
+} as const
+
+/**
+ * GLSL の float リテラルにする。整数は小数点を付けないと int 扱いになるため ".0" を付ける。
+ * それ以外は丸めずにそのまま出力し、TS 版（path.utils.ts）と同じ値を GLSL に渡す
+ */
+const toGlslFloat = (value: number): string =>
+  Number.isInteger(value) ? value.toFixed(1) : String(value)
+
+/** 値の一覧を、すべて float リテラルにした GLSL の #define 用オブジェクトへ変換する */
+const toGlslFloatDefines = (values: Record<string, number>): Record<string, string> =>
+  Object.fromEntries(Object.entries(values).map(([name, value]) => [name, toGlslFloat(value)]))
 
 /**
  * ground.glsl へ渡す定数。TS の定数から作り、TS 版（path.utils.ts）と GLSL 版で同じ値を使う。
@@ -64,6 +92,7 @@ const GROUND_DEFINES = {
     ({ cycles, xFrequency, phase, weight }) =>
       `vec4(${[cycles, xFrequency, phase, weight].map(toGlslFloat).join(", ")})`,
   ).join(", "),
+  ...toGlslFloatDefines(GROUND_NOISE_CELLS),
 }
 
 /**
@@ -91,11 +120,20 @@ const COLOR_PATCH = /* glsl */ `
   diffuseColor.rgb *= groundSurfaceColor(vCourseCoord);
 `
 
-/** 差し込み先の標準チャンク */
-const COMMON_CHUNK = "#include <common>"
-const BEGIN_NORMAL_CHUNK = "#include <beginnormal_vertex>"
-const BEGIN_VERTEX_CHUNK = "#include <begin_vertex>"
-const COLOR_CHUNK = "#include <color_fragment>"
+/**
+ * ノイズのセルの大きさが COURSE_LENGTH を割り切るか検証する。
+ * 割り切れないと、ループ境界でセル番号の折り返しがずれて模様に段差ができる
+ * @throws 割り切れないセルの大きさがある場合
+ */
+const assertNoiseCellsDivideCourseLength = (): void => {
+  Object.entries(GROUND_NOISE_CELLS).forEach(([name, cellSize]) => {
+    if (!Number.isInteger(COURSE_LENGTH / cellSize)) {
+      throw new Error(
+        `Ground: ${name}（${cellSize}m）が COURSE_LENGTH（${COURSE_LENGTH}m）を割り切りません`,
+      )
+    }
+  })
+}
 
 /**
  * 惑星の表面となる地面。カメラに追従する 1 枚の平面を、曲げ変換で球冠に見せる。
@@ -107,7 +145,10 @@ const COLOR_CHUNK = "#include <color_fragment>"
 export class Ground {
   readonly mesh: Mesh<PlaneGeometry, MeshLambertMaterial>
 
+  /** @throws ノイズのセルの大きさが COURSE_LENGTH を割り切らない場合 */
   constructor(curvatureUniforms: ICurvatureUniforms) {
+    assertNoiseCellsDivideCourseLength()
+
     const geometry = new PlaneGeometry(GROUND_SIZE, GROUND_SIZE, GROUND_SEGMENTS, GROUND_SEGMENTS)
     // PlaneGeometry は XY 平面なので、XZ 平面（地面）へ寝かせる
     geometry.rotateX(-Math.PI / 2)
@@ -152,13 +193,15 @@ export class Ground {
     shader.uniforms.uDirtDarkColor = { value: new Color(DIRT_DARK_COLOR) }
     shader.uniforms.uDirtLightColor = { value: new Color(DIRT_LIGHT_COLOR) }
 
-    shader.vertexShader = shader.vertexShader
-      .replace(COMMON_CHUNK, `${COMMON_CHUNK}\n${groundShader}`)
-      .replace(BEGIN_NORMAL_CHUNK, `${BEGIN_NORMAL_CHUNK}\n${NORMAL_PATCH}`)
-      .replace(BEGIN_VERTEX_CHUNK, `${BEGIN_VERTEX_CHUNK}\n${POSITION_PATCH}`)
+    let vertexShader = insertAfterShaderChunk(shader.vertexShader, "common", groundShader)
+    vertexShader = insertAfterShaderChunk(vertexShader, "beginnormal_vertex", NORMAL_PATCH)
+    shader.vertexShader = insertAfterShaderChunk(vertexShader, "begin_vertex", POSITION_PATCH)
 
-    shader.fragmentShader = shader.fragmentShader
-      .replace(COMMON_CHUNK, `${COMMON_CHUNK}\n${groundShader}\n${groundFragmentShader}`)
-      .replace(COLOR_CHUNK, `${COLOR_CHUNK}\n${COLOR_PATCH}`)
+    const fragmentShader = insertAfterShaderChunk(
+      shader.fragmentShader,
+      "common",
+      `${groundShader}\n${groundFragmentShader}`,
+    )
+    shader.fragmentShader = insertAfterShaderChunk(fragmentShader, "color_fragment", COLOR_PATCH)
   }
 }

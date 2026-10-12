@@ -13,18 +13,13 @@ uniform vec3 uMossColor;
 uniform vec3 uDirtDarkColor;
 uniform vec3 uDirtLightColor;
 
-// ノイズのセルの大きさ（m）。すべて 100 を割り切る値
-// 苔のまだら（大きな濃淡）
-const float GROUND_MOSS_CELL = 10.0;
-// 草の茂みの濃淡
-const float GROUND_TUFT_CELL = 1.0;
-// 土の小石・凹凸
-const float GROUND_PEBBLE_CELL = 0.5;
-// 細かいざらつき
-const float GROUND_GRAIN_CELL = 0.25;
-// 道の縁のギザギザ（大きなうねりと細かい欠け）
-const float GROUND_EDGE_LARGE_CELL = 2.0;
-const float GROUND_EDGE_SMALL_CELL = 0.25;
+// ノイズのセルの大きさ（m）は GROUND_MOSS_CELL などの #define で Ground.ts から受け取る（COURSE_LENGTH を割り切ることを検証済み）
+
+// 2 つのノイズを混ぜるときの重み（大きいセル側。小さいセル側は 1 - この値）
+// 草地・土の色の濃淡: 茂み・小石の濃淡を主にし、ざらつきを少し重ねる
+const float GROUND_DETAIL_PRIMARY_WEIGHT = 0.6;
+// 道の縁のずらし: 大きなうねりを主にし、細かい欠けを少し重ねる
+const float GROUND_EDGE_LARGE_WEIGHT = 0.6;
 
 // 道の縁: 草地へ切り替わり始める距離と終わる距離（道の半幅からの差、m）
 const float GROUND_PATH_EDGE_INNER = 0.08;
@@ -40,9 +35,13 @@ const float GROUND_MOSS_STRENGTH = 0.6;
 // 道の縁の草を踏まれて暗くする強さ
 const float GROUND_TRAMPLED_DARKEN = 0.25;
 
-// セル座標から 0〜1 の擬似乱数を作る
+// セル座標から 0〜1 の擬似乱数を作る（Dave Hoskins の hash12。sin を使わない）
+// sin を使うハッシュは、セル番号が数百になると引数が 10 万を超えて float の精度が落ち、
+// GPU ごとに模様が崩れたり縞が出たりするため使わない
 float groundHash(vec2 cell) {
-  return fract(sin(dot(cell, vec2(127.1, 311.7))) * 43758.5453);
+  vec3 p = fract(vec3(cell.xyx) * 0.1031);
+  p += dot(p, p.yzx + 33.33);
+  return fract((p.x + p.y) * p.z);
 }
 
 // s 方向のセル番号を 1 周のセル数で折り返す。
@@ -79,8 +78,11 @@ float groundFilteredNoise(vec2 coord, float cellSize, float pixelSize) {
 // 道らしさ（0 = 草地、1 = 道の土）。縁をノイズでずらし、自然なギザギザの境界にする
 float groundPathMask(vec2 courseCoord, float pixelSize) {
   float distanceFromPath = abs(courseCoord.x - groundPathX(courseCoord.y));
-  float edgeNoise = groundValueNoise(courseCoord, GROUND_EDGE_LARGE_CELL) * 0.6
-    + groundFilteredNoise(courseCoord, GROUND_EDGE_SMALL_CELL, pixelSize) * 0.4;
+  float edgeNoise = mix(
+    groundFilteredNoise(courseCoord, GROUND_EDGE_SMALL_CELL, pixelSize),
+    groundValueNoise(courseCoord, GROUND_EDGE_LARGE_CELL),
+    GROUND_EDGE_LARGE_WEIGHT
+  );
   float jitteredDistance = distanceFromPath + (edgeNoise - 0.5) * 2.0 * GROUND_PATH_EDGE_JITTER;
   return 1.0 - smoothstep(
     GROUND_PATH_HALF_WIDTH - GROUND_PATH_EDGE_INNER,
@@ -96,13 +98,13 @@ vec3 groundSurfaceColor(vec2 courseCoord) {
 
   // 草地: 茂みの濃淡 + ざらつき、ところどころに明るい苔のまだら
   float tuft = groundFilteredNoise(courseCoord, GROUND_TUFT_CELL, pixelSize);
-  vec3 grass = mix(uGrassDarkColor, uGrassLightColor, tuft * 0.6 + grain * 0.4);
+  vec3 grass = mix(uGrassDarkColor, uGrassLightColor, mix(grain, tuft, GROUND_DETAIL_PRIMARY_WEIGHT));
   float moss = smoothstep(GROUND_MOSS_START, GROUND_MOSS_END, groundValueNoise(courseCoord, GROUND_MOSS_CELL));
   grass = mix(grass, uMossColor, moss * GROUND_MOSS_STRENGTH);
 
   // 道の土: 小石の凹凸 + ざらつき
   float pebble = groundFilteredNoise(courseCoord, GROUND_PEBBLE_CELL, pixelSize);
-  vec3 dirt = mix(uDirtDarkColor, uDirtLightColor, pebble * 0.6 + grain * 0.4);
+  vec3 dirt = mix(uDirtDarkColor, uDirtLightColor, mix(grain, pebble, GROUND_DETAIL_PRIMARY_WEIGHT));
 
   // 道の縁に近い草は踏まれて暗くなる（0.5 付近で最も強く掛かる）
   float pathMask = groundPathMask(courseCoord, pixelSize);
