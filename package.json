@@ -25,9 +25,13 @@
   },
   "devDependencies": {
     "@astrojs/check": "latest",
+    "@types/three": "^0.186.0",
     "astro": "latest",
     "prettier": "^3.9.10",
     "prettier-plugin-astro": "^1.1.1",
     "typescript": "^6.0.3"
+  },
+  "dependencies": {
+    "three": "^0.186.1"
   }
 }
