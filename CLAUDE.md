@@ -77,7 +77,7 @@ src/
     ├── world/                   # World・Ground・Atmosphere・配置物・world.constants.ts
     ├── orbs/                    # OrbManager（オーブの描画・クリック判定）・orb.events.ts（forest: イベント）
     ├── procedural/              # 道の蛇行・地面の起伏など、Three.js 非依存の計算（TS 版）
-    ├── shaders/                 # 地面・空の GLSL（地面の起伏は procedural/ の TS 版と同じ式）
+    ├── shaders/                 # 地面・空・オーブの炎の GLSL（共通の擬似乱数は hash.glsl。地面の起伏は procedural/ の TS 版と同じ式）
     └── debug/                   # ?debug 時だけ動的 import するデバッグ GUI
 ```
 
