@@ -68,18 +68,20 @@ Phase を進めたり方針を決めたりしたら、引き継ぎメモの状�
 src/
 ├── pages/index.astro            # 全画面レイアウト（ページ自体はスクロールしない）
 ├── components/                  # Astro コンポーネント（ForestExperience = カスタム要素 <forest-experience>）
+├── data/                        # オーブのコンテンツ（orbs.data.ts）と型。Astro と Three.js の両方から参照する
 └── experience/                  # Three.js のコード（Astro 非依存）
     ├── Experience.ts            # 生成・ループ・破棄の起点
     ├── core/                    # Viewport（サイズ監視）・Ticker（ループ）など
     ├── controls/                # ScrollController・CameraController・controls.constants.ts
     ├── curvature/               # 擬似球面の曲げ変換（GLSL と TS）
     ├── world/                   # World・Ground・Atmosphere・配置物・world.constants.ts
+    ├── orbs/                    # OrbManager（オーブの描画・クリック判定）・orb.events.ts（forest: イベント）
     ├── procedural/              # 道の蛇行・地面の起伏など、Three.js 非依存の計算（TS 版）
     ├── shaders/                 # 地面・空の GLSL（地面の起伏は procedural/ の TS 版と同じ式）
     └── debug/                   # ?debug 時だけ動的 import するデバッグ GUI
 ```
 
-- 計画書 §19 の構成に従ってファイルを増やす。予定のディレクトリ（`orbs/` `assets/` など）は、その Phase で必要になってから作る
+- 計画書 §19 の構成に従ってファイルを増やす。予定のディレクトリ（`assets/` など）は、その Phase で必要になってから作る
 - import は `@/*`（`src/*`）エイリアスを使う。同じディレクトリ内の参照は相対パスでよい
 - 3D 用のアセットは `public/models/`・`public/textures/`、モーダル用の画像は `src/assets/` に置く
 
