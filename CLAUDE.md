@@ -68,18 +68,20 @@ Phase を進めたり方針を決めたりしたら、引き継ぎメモの状�
 src/
 ├── pages/index.astro            # 全画面レイアウト（ページ自体はスクロールしない）
 ├── components/                  # Astro コンポーネント（ForestExperience = カスタム要素 <forest-experience>）
+├── data/                        # オーブのコンテンツ（orbs.data.ts）と型。Astro と Three.js の両方から参照する
 └── experience/                  # Three.js のコード（Astro 非依存）
     ├── Experience.ts            # 生成・ループ・破棄の起点
     ├── core/                    # Viewport（サイズ監視）・Ticker（ループ）など
     ├── controls/                # ScrollController・CameraController・controls.constants.ts
     ├── curvature/               # 擬似球面の曲げ変換（GLSL と TS）
     ├── world/                   # World・Ground・Atmosphere・配置物・world.constants.ts
+    ├── orbs/                    # OrbManager（オーブの描画・クリック判定）・orb.events.ts（forest: イベント）
     ├── procedural/              # 道の蛇行・地面の起伏など、Three.js 非依存の計算（TS 版）
-    ├── shaders/                 # 地面・空の GLSL（地面の起伏は procedural/ の TS 版と同じ式）
+    ├── shaders/                 # 地面・空・オーブの炎の GLSL（共通の擬似乱数は hash.glsl。地面の起伏は procedural/ の TS 版と同じ式）
     └── debug/                   # ?debug 時だけ動的 import するデバッグ GUI
 ```
 
-- 計画書 §19 の構成に従ってファイルを増やす。予定のディレクトリ（`orbs/` `assets/` など）は、その Phase で必要になってから作る
+- 計画書 §19 の構成に従ってファイルを増やす。予定のディレクトリ（`assets/` など）は、その Phase で必要になってから作る
 - import は `@/*`（`src/*`）エイリアスを使う。同じディレクトリ内の参照は相対パスでよい
 - 3D 用のアセットは `public/models/`・`public/textures/`、モーダル用の画像は `src/assets/` に置く
 
@@ -98,6 +100,7 @@ src/
 - 地面の起伏・道の中心線も同様に、`procedural/path.utils.ts` と `shaders/ground.glsl` を同じ式に保つ。定数は `path.constants.ts` から `material.defines` で GLSL へ渡す
 - 標準チャンクへの差し込みは `shaders/shaderChunk.utils.ts` の `insertAfterShaderChunk` / `replaceShaderChunk` を使う（チャンクが見つからなければ例外になる）。GLSL のコメントに `#include <...>` の文字列を書かない（置換に巻き込まれてコンパイルエラーになる）
 - 曲げ変換を使うマテリアルの霧は、ビューの奥行きではなくカメラからの直線距離で掛かる（`applyCurvature` が fog_vertex を置き換える）
+- 加算合成で光らせるマテリアル（オーブの炎など）は、標準の `AdditiveBlending` を使わず、`orbs/orbFlame.utils.ts` と同じ `CustomBlending`（色だけを足し、アルファは描画先のまま）にする。葉の `alphaToCoverage` と干渉し、板ポリの四角い輪郭が浮き出るため。板ポリに描く光は、板の端より内側で必ず 0 にする
 
 ### ループ（円環座標）
 

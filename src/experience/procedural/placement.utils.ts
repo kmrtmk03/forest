@@ -4,6 +4,8 @@ import { assertDividesCourseLength, wrapSignedCourse } from "@/experience/world/
 import { CHUNK_LENGTH, COURSE_LENGTH } from "@/experience/world/world.constants"
 
 import { periodicValueNoise } from "./noise.utils"
+import type { IOrbSlot } from "./orbSlot.type"
+import { isNearOrbSlot, listOrbSlots } from "./orbSlot.utils"
 import { groundHeight, pathX } from "./path.utils"
 import {
   CLEARING_NOISE_CELL,
@@ -84,12 +86,14 @@ const sampleClearingFactor = (x: number, s: number, strength: number, seed: numb
  * MEMO: 乱数を引く順番を変えると森全体が変わる。引く値を増やすときは最後に足すこと
  * @param cellX 横方向のセル番号（負数あり）
  * @param cellS コース方向のセル番号（0 以上、1 周のセル数未満）
+ * @param orbSlots オーブの位置（この周りには置かない）
  */
 const placeInCell = (
   rule: IPlacementRule,
   cellX: number,
   cellS: number,
   seed: number,
+  orbSlots: readonly IOrbSlot[],
 ): IPropPlacement | null => {
   const random = mulberry32(hash2(cellX, cellS, seed + rule.seedOffset))
 
@@ -105,7 +109,8 @@ const placeInCell = (
   const distanceFromPath = Math.abs(x - pathX(s))
   if (distanceFromPath < rule.minDistanceFromPath) return null
   if (distanceFromPath > rule.maxDistanceFromPath) return null
-  // TODO: Phase 5 でオーブの周囲（s ± 3m、道から 3m 以内）を除外する
+  // 除外: オーブのすぐ近くには置かない（オーブが幹や岩に隠れないようにする）
+  if (isNearOrbSlot(orbSlots, x, s, rule.clearance)) return null
 
   // 密度: 帯ごとの基本密度 × 空き地の間引きを確率として使う
   const density =
@@ -171,6 +176,8 @@ const isTooCloseToPlaced = (
  */
 export const generatePlacements = (seed: number): TPlacementChunks => {
   const chunks: TPlacementChunks = Array.from({ length: CHUNK_COUNT }, () => [])
+  // オーブの位置はコンテンツや seed に依存しないため、ここで一度だけ求める
+  const orbSlots = listOrbSlots()
 
   PLACEMENT_RULES.forEach((rule) => {
     const cellCountS = COURSE_LENGTH / rule.cellSize
@@ -179,7 +186,7 @@ export const generatePlacements = (seed: number): TPlacementChunks => {
 
     for (let cellS = 0; cellS < cellCountS; cellS++) {
       for (let cellX = -cellReachX; cellX < cellReachX; cellX++) {
-        const placement = placeInCell(rule, cellX, cellS, seed)
+        const placement = placeInCell(rule, cellX, cellS, seed, orbSlots)
         if (!placement) continue
         if (isTooCloseToPlaced(chunks, placement, rule.clearance)) continue
         // s は [0, COURSE_LENGTH) に折り返し済みなので、チャンク番号は範囲内に収まる
