@@ -8,6 +8,7 @@ import {
   ADDITIVE_COLOR_BLENDING,
   ADDITIVE_FOG_FRAGMENT,
 } from "@/experience/shaders/additiveBlending.utils"
+import { toGlslFloat } from "@/experience/shaders/glslLiteral.utils"
 import { insertAfterShaderChunk, replaceShaderChunk } from "@/experience/shaders/shaderChunk.utils"
 
 import { assertDividesCourseLength } from "./course.utils"
@@ -66,16 +67,16 @@ const SHARED_PARS = /* glsl */ `
 
 /**
  * 頂点シェーダーの共通部分へ差し込む宣言と定数。
- * 箱の大きさは TS の定数から作る（toGlslFloat を使わず、必ず小数点を付けて float リテラルにする）
+ * 箱の大きさは TS の定数から作る（toGlslFloat で float リテラルにする）
  */
 const VERTEX_PARS = /* glsl */ `
   ${SHARED_PARS}
   uniform float uTime;
   // (乱数の種 0〜1, 板の一辺 m)
   attribute vec2 aParticle;
-  const float PARTICLE_BOX_LENGTH = ${PARTICLE_BOX_LENGTH.toFixed(3)};
-  const float PARTICLE_BOX_BEHIND = ${PARTICLE_BOX_BEHIND.toFixed(3)};
-  const float PARTICLE_BOX_HALF_WIDTH = ${PARTICLE_BOX_HALF_WIDTH.toFixed(3)};
+  const float PARTICLE_BOX_LENGTH = ${toGlslFloat(PARTICLE_BOX_LENGTH)};
+  const float PARTICLE_BOX_BEHIND = ${toGlslFloat(PARTICLE_BOX_BEHIND)};
+  const float PARTICLE_BOX_HALF_WIDTH = ${toGlslFloat(PARTICLE_BOX_HALF_WIDTH)};
   // 箱の前の端・横の端で消す幅（m）。端で粒子が反対側へ移るのを見せない
   const float PARTICLE_FAR_FADE = 5.0;
   const float PARTICLE_SIDE_FADE = 3.0;

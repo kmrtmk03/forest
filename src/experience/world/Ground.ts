@@ -10,6 +10,7 @@ import {
   GROUND_HILL_WAVES,
   PATH_MEANDER_WAVES,
 } from "@/experience/procedural/path.constants"
+import { toGlslFloat } from "@/experience/shaders/glslLiteral.utils"
 import groundFragmentShader from "@/experience/shaders/ground.frag.glsl?raw"
 import groundShader from "@/experience/shaders/ground.glsl?raw"
 import hashShader from "@/experience/shaders/hash.glsl?raw"
@@ -68,13 +69,6 @@ const GROUND_NOISE_CELLS = {
   /** 道の縁の細かい欠け */
   GROUND_EDGE_SMALL_CELL: 0.25,
 } as const
-
-/**
- * GLSL の float リテラルにする。整数は小数点を付けないと int 扱いになるため ".0" を付ける。
- * それ以外は丸めずにそのまま出力し、TS 版（path.utils.ts）と同じ値を GLSL に渡す
- */
-const toGlslFloat = (value: number): string =>
-  Number.isInteger(value) ? value.toFixed(1) : String(value)
 
 /** 値の一覧を、すべて float リテラルにした GLSL の #define 用オブジェクトへ変換する */
 const toGlslFloatDefines = (values: Record<string, number>): Record<string, string> =>
