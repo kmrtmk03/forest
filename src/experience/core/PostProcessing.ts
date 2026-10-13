@@ -87,13 +87,17 @@ export class PostProcessing {
     // sceneCopy にはトーンマッピングと sRGB 変換が済んだ色が入っている。
     // Bloom のマテリアルが canvas へ描くときに、もう一度変換して明るくならないよう、その間だけ変換を切る。
     // （マテリアルのシェーダーはこの設定で 1 回だけコンパイルされ、シーンのマテリアルには影響しない）
+    // Bloom の途中で例外が起きても、次のフレームのシーンが変換なしで描かれないよう、finally で必ず戻す
     const { outputColorSpace, toneMapping } = renderer
     renderer.outputColorSpace = LinearSRGBColorSpace
     renderer.toneMapping = NoToneMapping
-    // writeBuffer は使われない（renderToScreen のため）。readBuffer の内容を canvas へ描き直し、光を足す
-    this.bloomPass.render(renderer, this.sceneCopy, this.sceneCopy, deltaSeconds, false)
-    renderer.outputColorSpace = outputColorSpace
-    renderer.toneMapping = toneMapping
+    try {
+      // writeBuffer は使われない（renderToScreen のため）。readBuffer の内容を canvas へ描き直し、光を足す
+      this.bloomPass.render(renderer, this.sceneCopy, this.sceneCopy, deltaSeconds, false)
+    } finally {
+      renderer.outputColorSpace = outputColorSpace
+      renderer.toneMapping = toneMapping
+    }
   }
 
   /** レンダーターゲットと Bloom のマテリアルを破棄する */
