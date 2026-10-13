@@ -1,5 +1,5 @@
 // 地面の模様（草地・道の土）を描くフラグメントシェーダー用の関数。
-// Ground.ts がフラグメントシェーダーの common チャンクの後（ground.glsl の後）へ差し込み、
+// Ground.ts がフラグメントシェーダーの common チャンクの後（hash.glsl・ground.glsl の後）へ差し込み、
 // color_fragment チャンクの後で groundSurfaceColor() の結果を diffuseColor に掛ける。
 //
 // 模様はすべてコース座標 (x, s)（applyCurvature が渡す vCourseCoord）で描く。
@@ -35,15 +35,6 @@ const float GROUND_MOSS_STRENGTH = 0.6;
 // 道の縁の草を踏まれて暗くする強さ
 const float GROUND_TRAMPLED_DARKEN = 0.25;
 
-// セル座標から 0〜1 の擬似乱数を作る（Dave Hoskins の hash12。sin を使わない）
-// sin を使うハッシュは、セル番号が数百になると引数が 10 万を超えて float の精度が落ち、
-// GPU ごとに模様が崩れたり縞が出たりするため使わない
-float groundHash(vec2 cell) {
-  vec3 p = fract(vec3(cell.xyx) * 0.1031);
-  p += dot(p, p.yzx + 33.33);
-  return fract((p.x + p.y) * p.z);
-}
-
 // s 方向のセル番号を 1 周のセル数で折り返す。
 // GPU の除算は誤差を含むため、セルの中央（+0.5）で mod を取ってから floor して整数に揃える
 float groundWrapCell(float cell, float cellCount) {
@@ -59,10 +50,10 @@ float groundValueNoise(vec2 coord, float cellSize) {
   float s0 = groundWrapCell(cell.y, cellCount);
   float s1 = groundWrapCell(cell.y + 1.0, cellCount);
 
-  float corner00 = groundHash(vec2(cell.x, s0));
-  float corner10 = groundHash(vec2(cell.x + 1.0, s0));
-  float corner01 = groundHash(vec2(cell.x, s1));
-  float corner11 = groundHash(vec2(cell.x + 1.0, s1));
+  float corner00 = forestHash12(vec2(cell.x, s0));
+  float corner10 = forestHash12(vec2(cell.x + 1.0, s0));
+  float corner01 = forestHash12(vec2(cell.x, s1));
+  float corner11 = forestHash12(vec2(cell.x + 1.0, s1));
 
   vec2 blend = local * local * (3.0 - 2.0 * local);
   return mix(mix(corner00, corner10, blend.x), mix(corner01, corner11, blend.x), blend.y);

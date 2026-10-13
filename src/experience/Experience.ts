@@ -69,7 +69,6 @@ export class Experience {
         host,
         signal,
         camera: this.cameraController.camera,
-        fog: world.atmosphere.fog,
         curvatureUniforms: world.curvatureUniforms,
         markers: orbMarkers,
       })

@@ -5,12 +5,18 @@ import {
   OneFactor,
   PlaneGeometry,
   ShaderMaterial,
+  UniformsLib,
+  UniformsUtils,
   ZeroFactor,
 } from "three"
 import type { IUniform } from "three"
 
 import orbFlameFragmentShader from "@/experience/shaders/orbFlame.frag.glsl?raw"
 import orbFlameVertexShader from "@/experience/shaders/orbFlame.vert.glsl?raw"
+import hashShader from "@/experience/shaders/hash.glsl?raw"
+
+/** 炎のフラグメントシェーダー。共通の擬似乱数（forestHash12）を前に連結する */
+const ORB_FLAME_FRAGMENT_SHADER = `${hashShader}\n${orbFlameFragmentShader}`
 
 /**
  * 火の玉（炎の下の丸い部分）の半径（m）。炎の形はこの半径を 1 とした単位で描く（orbFlame.frag.glsl）。
@@ -34,18 +40,12 @@ export interface IOrbFlameSharedUniforms {
   uTime: IUniform<number>
   /** 火の玉の半径（m） */
   uBallRadius: IUniform<number>
-  /** 霧が掛かり始める距離（m）。シーンの霧に合わせて毎フレーム更新する */
-  uFogNear: IUniform<number>
-  /** 霧で完全に見えなくなる距離（m） */
-  uFogFar: IUniform<number>
 }
 
-/** 共有 uniform を作る。霧の距離は最初の update で実際の値に置き換わる */
+/** 共有 uniform を作る */
 export const createOrbFlameSharedUniforms = (): IOrbFlameSharedUniforms => ({
   uTime: { value: 0 },
   uBallRadius: { value: ORB_FLAME_BALL_RADIUS },
-  uFogNear: { value: 0 },
-  uFogFar: { value: 1 },
 })
 
 /**
@@ -74,6 +74,9 @@ export const createOrbFlameMaterial = (
 ): ShaderMaterial =>
   new ShaderMaterial({
     uniforms: {
+      // 霧の uniform（fogNear / fogFar など）。fog: true にすると、three.js が描画のたびにシーンの霧の値を入れる。
+      // 値はマテリアルごとに書き込まれるため、共有せずマテリアルごとに複製する
+      ...UniformsUtils.clone(UniformsLib.fog),
       // 共有 uniform は IUniform のオブジェクトごと渡し、値の更新が全オーブに届くようにする
       ...sharedUniforms,
       uColor: { value: color },
@@ -81,7 +84,9 @@ export const createOrbFlameMaterial = (
       uIntensity: { value: 1 },
     },
     vertexShader: orbFlameVertexShader,
-    fragmentShader: orbFlameFragmentShader,
+    fragmentShader: ORB_FLAME_FRAGMENT_SHADER,
+    // 霧の色は混ぜず、距離だけを使って明るさを落とす（orbFlame.frag.glsl）
+    fog: true,
     // 加算合成で光らせる。重なった部分ほど明るくなり、後ろの物を隠さない。
     // 標準の AdditiveBlending はアルファも足してしまうため使わず、色だけを足してアルファは描画先のまま残す。
     // 葉（alphaToCoverage）は縁でアルファが 1 未満になっており、そこへアルファを足すと、

@@ -1,4 +1,4 @@
-// オーブ（魂の炎）のフラグメントシェーダー。
+// オーブ（魂の炎）のフラグメントシェーダー。orbFlame.utils.ts が hash.glsl の後に連結して使う。
 // 下が丸い火の玉で、上へ細く伸びる炎の舌が揺らぐ形を、ノイズで描く。加算合成で重ねて光らせる。
 //
 // 形はすべて「火の玉の半径 = 1」の単位で決める（uBallRadius で m に直す）。
@@ -9,9 +9,10 @@
 uniform float uTime;
 // 火の玉の半径（m）
 uniform float uBallRadius;
-// 霧が掛かり始める距離と、完全に見えなくなる距離（m）。シーンの霧と同じ値を毎フレーム受け取る
-uniform float uFogNear;
-uniform float uFogFar;
+// 霧が掛かり始める距離と、完全に見えなくなる距離（m）。
+// three.js 標準の霧の uniform と同じ名前にしてあり、マテリアルの fog: true で描画のたびにシーンの霧の値が入る
+uniform float fogNear;
+uniform float fogFar;
 // 炎の色（線形色空間）。縁ほどこの色が濃く、中心は白くなる
 uniform vec3 uColor;
 // オーブごとの乱数の種。揺らぎ方をオーブごとに変える
@@ -54,21 +55,14 @@ const float ORB_FLAME_HALO_FADE_END = 2.0;
 // 板の端で消す幅（UV）。光の広がりが板の端で切れて四角く見えないようにする
 const float ORB_FLAME_UV_EDGE = 0.12;
 
-// セル座標から 0〜1 の擬似乱数を作る（Dave Hoskins の hash12。sin を使わない）
-float orbFlameHash(vec2 cell) {
-  vec3 p = fract(vec3(cell.xyx) * 0.1031);
-  p += dot(p, p.yzx + 33.33);
-  return fract((p.x + p.y) * p.z);
-}
-
 // value noise（0〜1）
 float orbFlameNoise(vec2 coord) {
   vec2 cell = floor(coord);
   vec2 local = fract(coord);
   vec2 blend = local * local * (3.0 - 2.0 * local);
   return mix(
-    mix(orbFlameHash(cell), orbFlameHash(cell + vec2(1.0, 0.0)), blend.x),
-    mix(orbFlameHash(cell + vec2(0.0, 1.0)), orbFlameHash(cell + vec2(1.0, 1.0)), blend.x),
+    mix(forestHash12(cell), forestHash12(cell + vec2(1.0, 0.0)), blend.x),
+    mix(forestHash12(cell + vec2(0.0, 1.0)), forestHash12(cell + vec2(1.0, 1.0)), blend.x),
     blend.y
   );
 }
@@ -139,7 +133,7 @@ void main() {
   color *= smoothstep(0.0, ORB_FLAME_UV_EDGE, min(uvEdge.x, uvEdge.y));
 
   // 霧: 加算合成なので霧の色を混ぜず、明るさを落として霧の中へ溶かす
-  color *= 1.0 - smoothstep(uFogNear, uFogFar, vFogDistance);
+  color *= 1.0 - smoothstep(fogNear, fogFar, vFogDistance);
 
   gl_FragColor = vec4(color, 1.0);
 

@@ -12,6 +12,7 @@ import {
 } from "@/experience/procedural/path.constants"
 import groundFragmentShader from "@/experience/shaders/ground.frag.glsl?raw"
 import groundShader from "@/experience/shaders/ground.glsl?raw"
+import hashShader from "@/experience/shaders/hash.glsl?raw"
 import { insertAfterShaderChunk } from "@/experience/shaders/shaderChunk.utils"
 
 import { assertDividesCourseLength } from "./course.utils"
@@ -188,7 +189,7 @@ export class Ground {
     const fragmentShader = insertAfterShaderChunk(
       shader.fragmentShader,
       "common",
-      `${groundShader}\n${groundFragmentShader}`,
+      `${hashShader}\n${groundShader}\n${groundFragmentShader}`,
     )
     shader.fragmentShader = insertAfterShaderChunk(fragmentShader, "color_fragment", COLOR_PATCH)
   }

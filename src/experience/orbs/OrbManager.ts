@@ -11,7 +11,7 @@ import {
   Vector2,
   Vector3,
 } from "three"
-import type { Camera, Fog, Intersection, Object3D, ShaderMaterial } from "three"
+import type { Camera, Intersection, Object3D, ShaderMaterial } from "three"
 
 import type { TOrbId, TOrbMarker } from "@/data/orb.type"
 import type { ICurvatureUniforms } from "@/experience/curvature/applyCurvature"
@@ -35,17 +35,8 @@ import type { IOrbFlameSharedUniforms } from "./orbFlame.utils"
 
 // ---- 見た目 ----
 
-/**
- * データに色の指定がないときの炎の色（参考画像の青白い炎に近い水色）。
- * TODO: Phase 7 で光の粒と Bloom を足す
- */
+/** データに色の指定がないときの炎の色（参考画像の青白い炎に近い水色） */
 const ORB_DEFAULT_COLOR = "#8fd8ff"
-
-/**
- * オーブごとに炎の揺らぎ方を変える乱数の種の間隔。
- * ノイズの座標をこれだけずらすと、隣のオーブと揺らぎが似なくなる
- */
-const ORB_FLAME_SEED_STEP = 7.31
 
 /** 板の向きを決めるときに、カメラがほぼ真上・真下にいて向きが定まらないとみなす長さの 2 乗 */
 const BILLBOARD_MIN_LENGTH_SQ = 1e-8
@@ -57,10 +48,11 @@ const ORB_BOB_AMPLITUDE = 0.12
 const ORB_BOB_PERIOD = 3
 
 /**
- * オーブごとに浮遊の位相をずらす量（ラジアン、黄金角）。
- * 隣り合うオーブが同じタイミングで上下しないようにする。位置ではなく並び順で決めるため、1 周の境界でも途切れない
+ * オーブごとの個体差の種をずらす量（黄金角）。浮遊の位相（ラジアン）と炎のノイズのずらし量の両方に使い、
+ * 隣り合うオーブが同じタイミングで上下したり、同じように揺らいだりしないようにする。
+ * 位置ではなく並び順で決めるため、1 周の境界でも途切れない
  */
-const ORB_PHASE_STEP = Math.PI * (3 - Math.sqrt(5))
+const ORB_VARIATION_STEP = Math.PI * (3 - Math.sqrt(5))
 
 /**
  * 描画する範囲（m、カメラからのコース方向の距離）。配置物のチャンクと同じ範囲（前方 45m・後方 10m）にそろえる。
@@ -111,8 +103,8 @@ interface IOrb {
   flameMaterial: ShaderMaterial
   /** クリック判定用の球（描画しない） */
   hit: Mesh
-  /** 浮遊の位相（ラジアン） */
-  phase: number
+  /** 個体差の種。浮遊の位相（ラジアン）と、炎のノイズのずらし量に使う */
+  variation: number
 }
 
 /** 押した瞬間のポインタの情報（クリックかスワイプかの判定に使う） */
@@ -131,8 +123,6 @@ interface IOrbManagerOptions {
   signal: AbortSignal
   /** クリック・ホバーの判定と、炎の板をカメラへ向けるのに使うカメラ */
   camera: Camera
-  /** シーンの霧（Atmosphere の fog）。炎は加算合成のため、この距離に合わせて自分で明るさを落とす */
-  fog: Fog
   /** 曲げ変換の共有 uniform。カメラのコース位置と惑星半径を読む（World が毎フレーム更新する） */
   curvatureUniforms: ICurvatureUniforms
   /** オーブの描画用データ。並び順がコース上の並び順になる */
@@ -141,6 +131,8 @@ interface IOrbManagerOptions {
 
 /**
  * コース上のオーブの配置・浮遊・クリック判定を行う（計画書 §12・§13）。
+ * 見た目は板ポリに描く魂の炎（orbFlame.utils.ts）。
+ * TODO: Phase 7 で光の粒と Bloom を足す
  *
  * オーブは数が少ないため InstancedMesh にせず、1 個ずつ Mesh を作る。
  * 位置はシェーダーで曲げず、TS 版の曲げ変換（curvaturePosition）で毎フレーム CPU で求める。
@@ -156,7 +148,6 @@ export class OrbManager {
   private readonly host: HTMLElement
   private readonly camera: Camera
   private readonly curvatureUniforms: ICurvatureUniforms
-  private readonly fog: Fog
   private readonly orbs: IOrb[]
   /** 判定用の球からオーブを引く */
   private readonly orbByHit = new Map<Object3D, IOrb>()
@@ -170,6 +161,8 @@ export class OrbManager {
   private hoveredOrb: IOrb | null = null
   /** マウスが要素の上にあるか。ないときはホバーの判定をしない */
   private isPointerInside = false
+  /** マウスの最後の位置（clientX, clientY）。ホバーの判定にだけ使う */
+  private readonly hoverPointer = new Vector2()
   /** 押している最中のポインタ。押していないときは null */
   private press: IPointerPress | null = null
 
@@ -179,7 +172,6 @@ export class OrbManager {
   private readonly billboardNormal = new Vector3()
   private readonly billboardRight = new Vector3()
   private readonly billboardBasis = new Matrix4()
-  private readonly pointerClient = new Vector2()
   private readonly pointerNdc = new Vector2()
   private readonly raycaster = new Raycaster()
   /** いま描画しているオーブの判定用の球（クリック・ホバーの判定対象） */
@@ -190,18 +182,18 @@ export class OrbManager {
    * @throws オーブのデータの件数が 1 周のオーブの数（ORB_COUNT）と合わない場合、
    *   ORB_SPACING が COURSE_LENGTH を割り切らない場合。どちらも GPU のリソースを作る前に投げる
    */
-  constructor({ host, signal, camera, fog, curvatureUniforms, markers }: IOrbManagerOptions) {
+  constructor({ host, signal, camera, curvatureUniforms, markers }: IOrbManagerOptions) {
+    // 先に間隔を検証する（割り切れないと ORB_COUNT が整数にならず、件数のエラーが紛らわしくなるため）
+    const slots = listOrbSlots()
     if (markers.length !== ORB_COUNT) {
       throw new Error(
         `OrbManager: オーブのデータが ${markers.length} 件ですが、1 周に置くオーブは ${ORB_COUNT} 個です`,
       )
     }
-    const slots = listOrbSlots()
 
     this.host = host
     this.camera = camera
     this.curvatureUniforms = curvatureUniforms
-    this.fog = fog
     this.raycaster.far = PICK_MAX_DISTANCE
 
     // 形は全オーブで共有し、色を変えるマテリアルだけを 1 個ずつ作る
@@ -228,10 +220,8 @@ export class OrbManager {
     const { x: cameraX, y: cameraS } = this.curvatureUniforms.uCurvatureCamera.value
     const planetRadius = this.curvatureUniforms.uPlanetRadius.value
 
-    // 炎の揺らぎの時間と、霧の距離（デバッグ GUI で変えられるため毎フレーム写す）
+    // 炎の揺らぎの時間。霧の距離は three.js がマテリアルの fog: true で入れる
     this.flameUniforms.uTime.value = this.elapsedSeconds
-    this.flameUniforms.uFogNear.value = this.fog.near
-    this.flameUniforms.uFogFar.value = this.fog.far
 
     this.visibleHits.length = 0
     this.orbs.forEach((orb) => {
@@ -244,7 +234,7 @@ export class OrbManager {
 
       // カメラ相対の平面座標（curvature.glsl の curvatureRelative と同じ形。前方が -Z）を球面へ写像する
       const bob =
-        Math.sin((Math.PI * 2 * this.elapsedSeconds) / ORB_BOB_PERIOD + orb.phase) *
+        Math.sin((Math.PI * 2 * this.elapsedSeconds) / ORB_BOB_PERIOD + orb.variation) *
         ORB_BOB_AMPLITUDE
       this.relative.set(orb.slot.x - cameraX, orb.slot.height + bob, -forward)
       curvaturePosition(this.relative, planetRadius, orb.group.position)
@@ -270,7 +260,9 @@ export class OrbManager {
     })
 
     // オーブもカメラも動くため、マウスが止まっていても毎フレーム判定し直す（10 個の球なので軽い）
-    this.setHoveredOrb(this.isPointerInside ? this.pickOrb(this.pointerClient) : null)
+    this.setHoveredOrb(
+      this.isPointerInside ? this.pickOrb(this.hoverPointer.x, this.hoverPointer.y) : null,
+    )
   }
 
   /** ジオメトリ・マテリアルを破棄し、カーソルを元に戻す。リスナーは Experience の abort() で外れる */
@@ -285,10 +277,11 @@ export class OrbManager {
 
   /** 1 個のオーブ（炎の板・判定用の球）を作り、グループへ追加する */
   private createOrb(slot: IOrbSlot, marker: TOrbMarker): IOrb {
+    const variation = slot.index * ORB_VARIATION_STEP
     const flameMaterial = createOrbFlameMaterial(
       this.flameUniforms,
       new Color(marker.color ?? ORB_DEFAULT_COLOR),
-      slot.index * ORB_FLAME_SEED_STEP,
+      variation,
     )
 
     const flame = new Mesh(this.flameGeometry, flameMaterial)
@@ -306,7 +299,7 @@ export class OrbManager {
       group,
       flameMaterial,
       hit,
-      phase: slot.index * ORB_PHASE_STEP,
+      variation,
     }
     this.orbByHit.set(hit, orb)
     return orb
@@ -336,17 +329,21 @@ export class OrbManager {
 
   /**
    * 画面上の位置にあるオーブを探す。いま描画しているオーブだけを対象にし、最も手前のものを返す
-   * @param client ポインタの位置（clientX, clientY）
+   * @param clientX ポインタの位置（clientX）
+   * @param clientY ポインタの位置（clientY）
    */
-  private pickOrb(client: Vector2): IOrb | null {
+  private pickOrb(clientX: number, clientY: number): IOrb | null {
+    // 描画範囲にオーブがない区間では、要素の位置の取得も光線の計算もしない
+    if (this.visibleHits.length === 0) return null
+
     const rect = this.host.getBoundingClientRect()
     // 要素が表示されていない（サイズ 0）ときは判定しない
     if (rect.width === 0 || rect.height === 0) return null
 
     // 要素内の位置を正規化デバイス座標（-1〜1、上が +）に直す
     this.pointerNdc.set(
-      ((client.x - rect.left) / rect.width) * 2 - 1,
-      -((client.y - rect.top) / rect.height) * 2 + 1,
+      ((clientX - rect.left) / rect.width) * 2 - 1,
+      -((clientY - rect.top) / rect.height) * 2 + 1,
     )
     this.raycaster.setFromCamera(this.pointerNdc, this.camera)
     this.intersections.length = 0
@@ -388,8 +385,8 @@ export class OrbManager {
     // スワイプ（タッチでの移動）や長押しはクリックにしない
     if (movedPx >= CLICK_MAX_MOVE_PX || durationMs >= CLICK_MAX_DURATION_MS) return
 
-    this.pointerClient.set(event.clientX, event.clientY)
-    const orb = this.pickOrb(this.pointerClient)
+    // ホバー用のマウスの位置（hoverPointer）は書き換えない。タッチのタップでホバーの位置がずれないようにする
+    const orb = this.pickOrb(event.clientX, event.clientY)
     if (orb) dispatchOrbSelect(orb.id)
   }
 
@@ -400,7 +397,7 @@ export class OrbManager {
   /** マウスの位置を覚える。判定は update でフレームごとに 1 回だけ行う。タッチ・ペンにはホバーがないので無視する */
   private readonly handlePointerMove = (event: PointerEvent): void => {
     if (event.pointerType !== "mouse") return
-    this.pointerClient.set(event.clientX, event.clientY)
+    this.hoverPointer.set(event.clientX, event.clientY)
     this.isPointerInside = true
   }
 
