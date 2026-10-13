@@ -4,6 +4,7 @@ import type { TOrbMarker } from "@/data/orb.type"
 
 import { CameraController } from "./controls/CameraController"
 import { ScrollController } from "./controls/ScrollController"
+import { PostProcessing } from "./core/PostProcessing"
 import { Ticker } from "./core/Ticker"
 import { Viewport } from "./core/Viewport"
 import type { IViewportSize } from "./core/Viewport"
@@ -24,7 +25,7 @@ type TExperienceState = "loading" | "ready"
  *
  * 毎フレームの更新は次の一方向の流れで行い、クラス同士は互いを直接参照しない。
  *   Ticker → ScrollController.update → World.update（曲げ変換の uniform 更新を含む）
- *   → OrbManager.update（更新済みの uniform からオーブの位置を求める）→ 描画
+ *   → OrbManager.update（更新済みの uniform からオーブの位置を求める）→ 描画（PostProcessing で Bloom を掛ける）
  *
  * モーダルが開いている間（forest:modal-change）は移動とオーブの操作を止める。描画は続け、背景の森は動いて見える
  */
@@ -35,6 +36,7 @@ export class Experience {
   private readonly cameraController: CameraController
   private readonly world: World
   private readonly orbManager: OrbManager
+  private readonly postProcessing: PostProcessing
   private readonly scrollController: ScrollController
   private readonly viewport: Viewport
   private readonly ticker: Ticker
@@ -59,12 +61,16 @@ export class Experience {
 
     this.renderer = new WebGLRenderer({
       canvas,
+      // シーンは canvas に直接描く（PostProcessing を参照）。MSAA は canvas のものを使う
       antialias: true,
       powerPreference: "high-performance",
     })
-    // 生成に失敗したとき、それより前に作った World・OrbManager を破棄するために覚えておく
+    // 後処理は 1 フレームに何度も描画するため、Draw Call の数はフレームの始めに手で数え直す（handleTick）
+    this.renderer.info.autoReset = false
+    // 生成に失敗したとき、それより前に作った World・OrbManager・PostProcessing を破棄するために覚えておく
     let world: World | null = null
     let orbManager: OrbManager | null = null
+    let postProcessing: PostProcessing | null = null
     try {
       this.cameraController = new CameraController()
       world = new World()
@@ -78,6 +84,8 @@ export class Experience {
       })
       this.orbManager = orbManager
       world.scene.add(orbManager.group)
+      postProcessing = new PostProcessing(this.renderer, world.scene, this.cameraController.camera)
+      this.postProcessing = postProcessing
       this.scrollController = new ScrollController(host, signal)
       // Viewport は生成時に 1 回 handleResize を呼ぶため、renderer と camera の生成後に作る
       this.viewport = new Viewport(host, signal, this.handleResize)
@@ -87,6 +95,7 @@ export class Experience {
       // 生成に失敗すると呼び出し側は destroy() を呼べないため、ここまでに作ったリスナー・World・レンダラーを解放する。
       // World・OrbManager は自分の中で失敗したときに、作った分を破棄してから（または作る前に）例外を投げる
       this.abortController.abort()
+      postProcessing?.dispose()
       orbManager?.dispose()
       world?.dispose()
       this.renderer.dispose()
@@ -104,6 +113,7 @@ export class Experience {
       ? await Debug.create({
           radiusUniform: this.world.curvatureUniforms.uPlanetRadius,
           fog: this.world.atmosphere.fog,
+          bloom: this.postProcessing.bloomPass,
           forest: this.world.forest,
           scroll: this.scrollController,
         })
@@ -129,6 +139,7 @@ export class Experience {
     this.viewport.dispose()
     this.debug?.dispose()
     this.debug = null
+    this.postProcessing.dispose()
     this.orbManager.dispose()
     this.world.dispose()
     this.renderer.dispose()
@@ -143,6 +154,7 @@ export class Experience {
     this.renderer.setPixelRatio(pixelRatio)
     // 第 3 引数 false: canvas の CSS サイズはスタイルシート側（100%）に任せる
     this.renderer.setSize(width, height, false)
+    this.postProcessing.setSize(width, height)
     this.cameraController.resize(width / height)
   }
 
@@ -156,12 +168,14 @@ export class Experience {
   private readonly handleTick = (deltaSeconds: number): void => {
     this.scrollController.update(deltaSeconds)
     const { distance, velocity } = this.scrollController
-    this.world.update(distance)
+    this.world.update(distance, deltaSeconds)
     this.orbManager.update(deltaSeconds)
 
-    this.renderer.render(this.world.scene, this.cameraController.camera)
+    // autoReset を切っているので、後処理の分も含めた 1 フレーム分を数えるよう、描画の前に数え直す
+    this.renderer.info.reset()
+    this.postProcessing.render(deltaSeconds)
 
-    // renderer.info は render のたびに数え直されるため、描画の直後に読む
+    // シーンと後処理（Bloom のぼかし・合成、画面への出力）を合わせた 1 フレーム分の数
     const { calls: drawCalls, triangles } = this.renderer.info.render
     this.debug?.update({ distance, courseS: this.world.courseS, velocity, drawCalls, triangles })
   }

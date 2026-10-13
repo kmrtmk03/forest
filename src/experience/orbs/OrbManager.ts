@@ -21,6 +21,7 @@ import { listOrbSlots, ORB_COUNT } from "@/experience/procedural/orbSlot.utils"
 import { wrapSignedCourse } from "@/experience/world/course.utils"
 import {
   CHUNK_LENGTH,
+  FOG_FAR,
   VISIBLE_CHUNKS_AHEAD,
   VISIBLE_CHUNKS_BEHIND,
 } from "@/experience/world/world.constants"
@@ -78,8 +79,12 @@ const ORB_SHRINK_END_DISTANCE = 0.6
  */
 const ORB_HIT_RADIUS = 0.75
 
-/** クリックとして受け付ける最も遠い距離（m、カメラからの直線距離）。霧が濃く見えにくいオーブは選ばせない */
-const PICK_MAX_DISTANCE = 40
+/**
+ * クリックとして受け付ける最も遠い距離（m、カメラからの直線距離）。
+ * 霧で完全に見えなくなる距離（FOG_FAR）にそろえ、霧の中の見えないオーブを選ばせない。
+ * デバッグ GUI で霧の距離を変えても、この値は起動時の FOG_FAR のまま
+ */
+const PICK_MAX_DISTANCE = FOG_FAR
 
 /** 押してから離すまでの移動量（px）と時間（ms）がこれ未満のときだけクリックとみなす（スワイプ移動を除くため） */
 const CLICK_MAX_MOVE_PX = 6

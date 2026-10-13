@@ -22,7 +22,7 @@ export const MIN_BRANCH_RADIUS = 0.02
  * 配置ごとの回転・拡大率・縦の伸び・傾き・色の明るさ（placement.constants.ts）で出す。
  *
  * 高さについて: 新しいチャンクの木は 45m 先から描かれ、そこで地平線より上に頭を出す木（高さ 7.3m 以上）は
- * 目からの直線距離が 47.5m 以上になるため、霧（FOG_FAR 45m）で完全に見えない。高い木ほど遠くなるので、
+ * 目からの直線距離が 47.5m 以上になるため、霧（FOG_FAR 34m）で完全に見えない。高い木ほど遠くなるので、
  * 高さによって突然現れることはない（FOG_FAR を 45m より大きくするときは再確認すること）
  */
 export const FRACTAL_TREE_SPECIES: readonly IFractalTreeSpecies[] = [

@@ -18,6 +18,15 @@ const FOG_DISTANCE_MIN = 0
 const FOG_DISTANCE_MAX = CAMERA_FAR
 const FOG_DISTANCE_STEP = 0.5
 
+/**
+ * Bloom のスライダーの範囲（強さ・広がり・しきい値）と刻み。
+ * しきい値は画面の色（sRGB、0〜1）の輝度と比べるため（PostProcessing を参照）、1 を超える値は意味がない
+ */
+const BLOOM_STRENGTH_MAX = 3
+const BLOOM_RADIUS_MAX = 1
+const BLOOM_THRESHOLD_MAX = 1
+const BLOOM_STEP = 0.01
+
 /** seed をランダムに選ぶときの上限（32bit 符号なし整数の範囲） */
 const SEED_RANGE = 2 ** 32
 
@@ -64,12 +73,24 @@ interface IDebugScrollTarget {
   setAutoWalkSpeed(speed: number): void
 }
 
+/** Bloom の調整対象（PostProcessing の UnrealBloomPass） */
+interface IDebugBloomTarget {
+  /** にじみの強さ */
+  strength: number
+  /** にじみの広がり（0〜1） */
+  radius: number
+  /** 光らせる輝度のしきい値（トーンマッピングと sRGB 変換が済んだ画面の色、0〜1） */
+  threshold: number
+}
+
 /** デバッグ GUI から調整する対象 */
 interface IDebugTargets {
   /** 惑星半径の uniform（曲げ変換の共有 uniform をそのまま渡す） */
   radiusUniform: IUniform<number>
   /** シーンの霧（Atmosphere の fog をそのまま渡す） */
   fog: Fog
+  /** Bloom（PostProcessing の bloomPass をそのまま渡す） */
+  bloom: IDebugBloomTarget
   /** 配置物の森（seed の切り替えに使う） */
   forest: IDebugSeedTarget
   /** 進行距離（ループ検証のジャンプ・自動歩行に使う） */
@@ -123,7 +144,7 @@ export class Debug {
   private constructor(
     private readonly gui: GUI,
     private readonly stats: Stats,
-    { radiusUniform, fog, forest, scroll }: IDebugTargets,
+    { radiusUniform, fog, bloom, forest, scroll }: IDebugTargets,
   ) {
     this.scroll = scroll
     document.body.append(stats.dom)
@@ -156,6 +177,12 @@ export class Debug {
     atmosphere
       .add(fog, "far", FOG_DISTANCE_MIN, FOG_DISTANCE_MAX, FOG_DISTANCE_STEP)
       .name("fog far (m)")
+
+    // Bloom: しきい値を下げるほど暗い物まで光る。強さ・広がりと合わせて、画面全体のにじみ方を探す
+    const bloomFolder = gui.addFolder("Bloom")
+    bloomFolder.add(bloom, "strength", 0, BLOOM_STRENGTH_MAX, BLOOM_STEP)
+    bloomFolder.add(bloom, "radius", 0, BLOOM_RADIUS_MAX, BLOOM_STEP)
+    bloomFolder.add(bloom, "threshold", 0, BLOOM_THRESHOLD_MAX, BLOOM_STEP)
 
     // 森の seed: 入力を確定したとき（または random を押したとき）だけ森を作り直す。
     // 入力中に毎回作り直すと、配置の生成と InstancedMesh の作り直しが連続して重くなるため

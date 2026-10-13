@@ -1,16 +1,7 @@
-import {
-  AddEquation,
-  Color,
-  CustomBlending,
-  OneFactor,
-  PlaneGeometry,
-  ShaderMaterial,
-  UniformsLib,
-  UniformsUtils,
-  ZeroFactor,
-} from "three"
+import { Color, PlaneGeometry, ShaderMaterial, UniformsLib, UniformsUtils } from "three"
 import type { IUniform } from "three"
 
+import { ADDITIVE_COLOR_BLENDING } from "@/experience/shaders/additiveBlending.utils"
 import orbFlameFragmentShader from "@/experience/shaders/orbFlame.frag.glsl?raw"
 import orbFlameVertexShader from "@/experience/shaders/orbFlame.vert.glsl?raw"
 import hashShader from "@/experience/shaders/hash.glsl?raw"
@@ -88,18 +79,7 @@ export const createOrbFlameMaterial = (
     // 霧の色は混ぜず、距離だけを使って明るさを落とす（orbFlame.frag.glsl）
     fog: true,
     // 加算合成で光らせる。重なった部分ほど明るくなり、後ろの物を隠さない。
-    // 標準の AdditiveBlending はアルファも足してしまうため使わず、色だけを足してアルファは描画先のまま残す。
-    // 葉（alphaToCoverage）は縁でアルファが 1 未満になっており、そこへアルファを足すと、
-    // 炎が 0 の部分でも板の範囲だけ葉の縁の見え方が変わり、板の四角い輪郭が浮き出るため
-    blending: CustomBlending,
-    blendEquation: AddEquation,
+    // 色だけを足してアルファは描画先のまま残す（理由は ADDITIVE_COLOR_BLENDING を参照）。
     // シェーダーはアルファ 1 を出すので、色は SrcAlpha ではなく One を掛けても同じ
-    blendSrc: OneFactor,
-    blendDst: OneFactor,
-    blendSrcAlpha: ZeroFactor,
-    blendDstAlpha: OneFactor,
-    transparent: true,
-    depthWrite: false,
-    // 木の幹などの手前の物には隠れるよう、深度の判定は行う
-    depthTest: true,
+    ...ADDITIVE_COLOR_BLENDING,
   })

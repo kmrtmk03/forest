@@ -52,7 +52,9 @@ const SKY_RENDER_ORDER = -1
 /**
  * 光・霧・空をまとめる。どれもコース位置に依存させず、カメラ相対で一定にする（ループに強い）。
  * World が group をシーンへ追加し、fog を scene.fog に設定する。
- * TODO: Phase 7 で浮遊粒子・木漏れ日・色調整を追加する
+ * 森の空気感の演出のうち、コース上の位置に結びつくもの（木漏れ日・光芒・浮遊粒子）は曲げ変換を使うため、
+ * Ground・LightShafts・FloatingParticles に置き、World が束ねる。
+ * TODO: Phase 7 で色調整（トーンマッピング、光・霧・空の色）を行う
  */
 export class Atmosphere {
   /** 光と空のメッシュ。シーンへ追加すること */

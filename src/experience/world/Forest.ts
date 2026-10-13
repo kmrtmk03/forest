@@ -26,6 +26,7 @@ import {
 } from "@/experience/procedural/placement.utils"
 
 import { createFractalTreeModels } from "./fractalTreeModels.utils"
+import type { GroundShadowMap } from "./GroundShadowMap"
 import { createPrimitiveRockModels } from "./primitiveRockModels.utils"
 import type { IPropModel } from "./propModel.type"
 import { CHUNK_LENGTH, VISIBLE_CHUNKS_AHEAD, VISIBLE_CHUNKS_BEHIND } from "./world.constants"
@@ -66,11 +67,13 @@ type TInstanceChunks = IPropInstance[][]
  * インスタンス行列にはコース座標をそのまま入れ、移動・折り返し・湾曲はシェーダー（applyCurvature）が行う。
  *
  * モデルの部品（幹・葉など）ごとに InstancedMesh を 1 つ作るため、Draw Call は「部品の数」になる。
+ * 配置を作り直すたびに、根元の影（GroundShadowMap）も同じ配置で描き直す。
  */
 export class Forest {
   /** 配置物の InstancedMesh をまとめたグループ。シーンへ追加すること */
   readonly group = new Group()
   private readonly models: readonly IPropModel[]
+  private readonly groundShadowMap: GroundShadowMap
   /** モデルごとの InstancedMesh（部品の数だけ）。seed を変えると作り直す */
   private readonly meshesByModel = new Map<TModelKey, InstancedMesh[]>()
   private instanceChunks: TInstanceChunks = []
@@ -84,16 +87,18 @@ export class Forest {
 
   /**
    * @param curvatureUniforms 曲げ変換の共有 uniform（配置物のマテリアルへ渡す）
+   * @param groundShadowMap 根元の影を描く先。破棄は渡した側（World）が行う
    * @throws 配置の設定が 1 周の長さと矛盾する場合、可視チャンクの数が 1 周のチャンク数を超える場合、
    *   配置に対応するモデルがない場合。例外を投げるときは、作ったモデルを破棄してから投げる
    */
-  constructor(curvatureUniforms: ICurvatureUniforms) {
+  constructor(curvatureUniforms: ICurvatureUniforms, groundShadowMap: GroundShadowMap) {
     assertPlacementSettings()
     // 可視範囲が 1 周を超えると、同じチャンクを 2 回詰めて同じ物を二重に描いてしまう
     if (VISIBLE_CHUNKS_BEHIND + 1 + VISIBLE_CHUNKS_AHEAD > CHUNK_COUNT) {
       throw new Error("Forest: 可視チャンクの数が 1 周のチャンク数を超えています")
     }
 
+    this.groundShadowMap = groundShadowMap
     this.models = []
     try {
       // モデルの生成（葉の画像を描く Canvas を含む）も失敗しうるため、try の中で作る
@@ -142,13 +147,15 @@ export class Forest {
 
   /**
    * 指定の seed で配置を生成し直し、InstancedMesh を必要な容量で作り直してから、いまのチャンクで詰める。
+   * 根元の影も同じ配置で描き直す。
    * 例外を投げうる処理（個体の作成・容量の計算）を先に済ませ、成功してから古い InstancedMesh と入れ替える。
    * 生成直後に詰めることで、最初のシェーダーのコンパイル（compileAsync）の時点でインスタンスの色を持たせ、
    * 歩き始めてからの再コンパイルを防ぐ
    * @throws 配置に対応するモデルがない場合
    */
   private rebuild(seed: number): void {
-    const instanceChunks = this.createInstances(generatePlacements(seed))
+    const placementChunks = generatePlacements(seed)
+    const instanceChunks = this.createInstances(placementChunks)
     const capacities = Forest.measureCapacities(instanceChunks)
 
     // ここから先は例外を投げない
@@ -172,6 +179,7 @@ export class Forest {
     })
 
     this.fill(this.currentChunk ?? 0)
+    this.groundShadowMap.draw(placementChunks)
   }
 
   /**
