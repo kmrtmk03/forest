@@ -40,10 +40,20 @@ const pageDescription = "スクロールで小さな星の森を歩く 3D サイ
     overscroll-behavior: none;
   }
 
+  /* HTML の UI（モーダル・一覧）で共通に使う色 */
+  :global(:root) {
+    /* 文字の色 */
+    --color-text: #f2f5ef;
+    /* 森の上に重ねるパネルの背景（暗い緑。背面の森が少し透ける） */
+    --color-surface: rgb(16 24 22 / 0.92);
+    /* キーボード操作のフォーカスリング（水色の炎に合わせる） */
+    --color-focus: #9fe7ff;
+  }
+
   /* 背景を霧の色にしておき、初期化前やリサイズ中も 3D 空間と色がつながるようにする */
   :global(body) {
     background: var(--fog-color);
-    color: #f2f5ef;
+    color: var(--color-text);
     font-family: system-ui, sans-serif;
   }
 

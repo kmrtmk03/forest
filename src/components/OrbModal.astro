@@ -60,14 +60,25 @@ const orbContents: readonly IOrbContent[] = ORB_CONTENTS
 </orb-modal>
 
 <script>
+  import type { TOrbId } from "@/data/orb.type"
   import { dispatchModalChange, ORB_SELECT_EVENT } from "@/experience/orbs/orb.events"
   import type { IOrbSelectDetail } from "@/experience/orbs/orb.events"
+  import { isOrbId } from "@/experience/orbs/orbMarker.utils"
 
   /** 子要素を取得する。マークアップと食い違っていたら、原因が分かるように例外にする */
   const queryRequired = <TElement extends Element>(root: Element, selector: string): TElement => {
     const element = root.querySelector<TElement>(selector)
     if (!element) throw new Error(`OrbModal: ${selector} が見つかりません`)
     return element
+  }
+
+  /** connectedCallback で取得し、開閉のたびに使う要素 */
+  interface IOrbModalElements {
+    dialog: HTMLDialogElement
+    /** スクロールする領域（開くたびに先頭へ戻す） */
+    panel: HTMLElement
+    /** template の中身を差し込む先 */
+    content: HTMLElement
   }
 
   /**
@@ -79,18 +90,29 @@ const orbContents: readonly IOrbContent[] = ORB_CONTENTS
    */
   class OrbModalElement extends HTMLElement {
     private abortController: AbortController | null = null
+    /** DOM につながっている間だけ持つ。外れている間は null */
+    private elements: IOrbModalElements | null = null
     /** オーブの ID → コンテンツの template */
-    private readonly templates = new Map<string, HTMLTemplateElement>()
+    private readonly templates = new Map<TOrbId, HTMLTemplateElement>()
     /** 背景（dialog 自身）の上で押し始めたか。中で押して外で離したドラッグを、背景のクリックとみなさないため */
     private isPressStartedOnBackdrop = false
 
     connectedCallback(): void {
       const dialog = queryRequired<HTMLDialogElement>(this, "dialog")
+      this.elements = {
+        dialog,
+        panel: queryRequired<HTMLElement>(dialog, "[data-orb-modal-panel]"),
+        content: queryRequired<HTMLElement>(dialog, "[data-orb-modal-content]"),
+      }
 
+      // data-orb-id はビルド時に TOrbId から書き出すが、HTML を経由するため形を検証してから使う
       this.templates.clear()
       this.querySelectorAll<HTMLTemplateElement>("template[data-orb-id]").forEach((template) => {
         const { orbId } = template.dataset
-        if (orbId !== undefined) this.templates.set(orbId, template)
+        if (!isOrbId(orbId)) {
+          throw new Error(`OrbModal: オーブ ID の形が正しくありません（${orbId}）`)
+        }
+        this.templates.set(orbId, template)
       })
 
       this.abortController = new AbortController()
@@ -104,9 +126,10 @@ const orbContents: readonly IOrbContent[] = ORB_CONTENTS
     disconnectedCallback(): void {
       this.abortController?.abort()
       this.abortController = null
+      const dialog = this.elements?.dialog
+      this.elements = null
       // 開いたまま外れても移動が止まったままにならないよう、閉じたことを知らせる
       // （close イベントのリスナーは外したので、ここで直接知らせる）
-      const dialog = this.querySelector("dialog")
       if (!dialog?.open) return
       dialog.close()
       dispatchModalChange({ isOpen: false, orbId: null })
@@ -114,20 +137,20 @@ const orbContents: readonly IOrbContent[] = ORB_CONTENTS
 
     /**
      * 選ばれたオーブのコンテンツを差し込んで開く。
-     * すでに開いているときは中身だけを差し替える（showModal() を二重に呼ぶと例外になるため）
+     * 開いている間は背面が inert なので通常は届かないが、届いた場合は中身だけを差し替える
+     * （showModal() を開いたまま呼ぶと例外になるため）
      */
     private readonly handleOrbSelect = ({ detail }: CustomEvent<IOrbSelectDetail>): void => {
+      if (!this.elements) return
+      const { dialog, panel, content } = this.elements
       const { orbId } = detail
       const template = this.templates.get(orbId)
       // データと 3D のオーブの対応が崩れている。黙って無視せず、原因が分かるように例外にする
       if (!template) throw new Error(`OrbModal: ${orbId} のコンテンツがありません`)
 
-      const dialog = queryRequired<HTMLDialogElement>(this, "dialog")
-      queryRequired(dialog, "[data-orb-modal-content]").replaceChildren(
-        template.content.cloneNode(true),
-      )
+      content.replaceChildren(template.content.cloneNode(true))
       // 長い本文を読み進めた後に別のオーブを開いても、先頭から表示する
-      queryRequired(dialog, "[data-orb-modal-panel]").scrollTop = 0
+      panel.scrollTop = 0
 
       if (!dialog.open) dialog.showModal()
       dispatchModalChange({ isOpen: true, orbId })
@@ -146,8 +169,7 @@ const orbContents: readonly IOrbContent[] = ORB_CONTENTS
     private readonly handleDialogClick = (event: MouseEvent): void => {
       const isBackdropClick = event.target === event.currentTarget && this.isPressStartedOnBackdrop
       this.isPressStartedOnBackdrop = false
-      if (!isBackdropClick || !(event.currentTarget instanceof HTMLDialogElement)) return
-      event.currentTarget.close()
+      if (isBackdropClick) this.elements?.dialog.close()
     }
   }
 
@@ -170,8 +192,8 @@ const orbContents: readonly IOrbContent[] = ORB_CONTENTS
     overflow: hidden;
     border: 1px solid rgb(255 255 255 / 0.14);
     border-radius: 1rem;
-    background: rgb(16 24 22 / 0.92);
-    color: #eef3ec;
+    background: var(--color-surface);
+    color: var(--color-text);
     box-shadow: 0 1.5rem 4rem rgb(0 0 0 / 0.45);
     opacity: 1;
     transform: none;
@@ -230,7 +252,7 @@ const orbContents: readonly IOrbContent[] = ORB_CONTENTS
   }
 
   .close:focus-visible {
-    outline: 2px solid #9fe7ff;
+    outline: 2px solid var(--color-focus);
     outline-offset: 2px;
   }
 
