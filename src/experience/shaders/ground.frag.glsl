@@ -2,6 +2,7 @@
 // Ground.ts がフラグメントシェーダーの common チャンクの後（hash.glsl・ground.glsl の後）へ差し込み、
 // color_fragment チャンクの後で groundSurfaceColor() と groundBlobShadow() の結果を diffuseColor に掛け、
 // emissivemap_fragment チャンクの後で groundSunfleck() の光を totalEmissiveRadiance に足す。
+// 1 画素の大きさ（groundPixelSize()）は color_fragment の後で 1 回だけ求め、両方へ渡す。
 //
 // 模様はすべてコース座標 (x, s)（applyCurvature が渡す vCourseCoord）で描く。
 // カメラが進むと地面と同じ速度で模様が流れるため、滑って見えない。
@@ -114,9 +115,15 @@ float groundPathMask(vec2 courseCoord, float pixelSize) {
   );
 }
 
+// 1 画素あたりのコース座標の変化量（m）。遠景で細かい模様を消すのに使う。
+// fwidth は分岐の外（main の直下）で呼ぶこと（周りの画素と足並みがそろわない分岐の中では値が不定になる）
+float groundPixelSize(vec2 courseCoord) {
+  return length(fwidth(courseCoord));
+}
+
 // コース座標での地面の色（線形色空間）
-vec3 groundSurfaceColor(vec2 courseCoord) {
-  float pixelSize = length(fwidth(courseCoord));
+// pixelSize: groundPixelSize() の結果
+vec3 groundSurfaceColor(vec2 courseCoord, float pixelSize) {
   float grain = groundFilteredNoise(courseCoord, GROUND_GRAIN_CELL, pixelSize);
 
   // 草地: 茂みの濃淡 + ざらつき、ところどころに明るい苔のまだら
@@ -211,8 +218,8 @@ float groundDapple(vec2 courseCoord, float pixelSize) {
 // 地面の色（反射率）を掛けると暗い草地の上では光らないため、地面の色は色味（明るさを 1 にそろえた色）としてだけ混ぜる
 // surfaceColor: 地面の色（diffuseColor.rgb。根元の影を掛けた後の値）
 // lit: 根元の影の外か（1 - groundBlobShadow）。影の中には木漏れ日を落とさない（根元が明るく抜けると影が浮いて見える）
-vec3 groundSunfleck(vec2 courseCoord, vec3 surfaceColor, float lit) {
-  float pixelSize = length(fwidth(courseCoord));
+// pixelSize: groundPixelSize() の結果
+vec3 groundSunfleck(vec2 courseCoord, vec3 surfaceColor, float lit, float pixelSize) {
   float dapple = groundDapple(courseCoord, pixelSize) * lit;
   vec3 surfaceTint = surfaceColor / max(dot(surfaceColor, vec3(0.2126, 0.7152, 0.0722)), 1e-4);
   vec3 tint = mix(vec3(1.0), surfaceTint, GROUND_DAPPLE_SURFACE_TINT);

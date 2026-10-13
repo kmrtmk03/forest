@@ -123,11 +123,12 @@ const POSITION_PATCH = /* glsl */ `
 /**
  * 地面の模様と根元の影を色に反映する処理（color_fragment の後に差し込む）。
  * vCourseCoord は applyCurvature が渡す。影は地面の色（反射率）に掛けるため、光源の光にも環境光にも同じだけ効く。
- * 影の外か（groundLit）は、後の木漏れ日（SUNFLECK_PATCH）でも使う
+ * 1 画素の大きさ（groundFragmentPixelSize）と影の外か（groundLit）は、後の木漏れ日（SUNFLECK_PATCH）でも使う
  */
 const COLOR_PATCH = /* glsl */ `
+  float groundFragmentPixelSize = groundPixelSize(vCourseCoord);
   float groundLit = 1.0 - groundBlobShadow(vCourseCoord);
-  diffuseColor.rgb *= groundSurfaceColor(vCourseCoord) * groundLit;
+  diffuseColor.rgb *= groundSurfaceColor(vCourseCoord, groundFragmentPixelSize) * groundLit;
 `
 
 /**
@@ -136,7 +137,12 @@ const COLOR_PATCH = /* glsl */ `
  * 中心は Bloom のしきい値を超え、にじんで光って見える（ground.frag.glsl の GROUND_DAPPLE_BRIGHTNESS）
  */
 const SUNFLECK_PATCH = /* glsl */ `
-  totalEmissiveRadiance += groundSunfleck(vCourseCoord, diffuseColor.rgb, groundLit);
+  totalEmissiveRadiance += groundSunfleck(
+    vCourseCoord,
+    diffuseColor.rgb,
+    groundLit,
+    groundFragmentPixelSize
+  );
 `
 
 /**
