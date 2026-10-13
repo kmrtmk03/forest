@@ -272,7 +272,9 @@ export class OrbManager {
 
   /**
    * クリック・ホバーの受け付けを切り替える。止めるときはホバーの強調とカーソルをすぐ戻し、
-   * 押している最中の操作も捨てる（モーダルの背面でオーブが光ったまま残らないようにするため）
+   * 押している最中の操作も捨てる（モーダルの背面でオーブが光ったまま残らないようにするため）。
+   * マウスの位置も忘れる。止めている間（モーダルで背面が inert の間）は pointermove / pointerleave が届かず、
+   * 再開した直後に古い位置でホバーを判定してしまうため。次に pointermove が来たら判定を再開する
    * @param isEnabled true で受け付ける、false で無視する
    */
   setEnabled(isEnabled: boolean): void {
@@ -280,6 +282,7 @@ export class OrbManager {
     if (isEnabled) return
 
     this.press = null
+    this.isPointerInside = false
     this.setHoveredOrb(null)
   }
 
