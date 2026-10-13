@@ -34,9 +34,13 @@ const PARTICLE_HEIGHT_BIAS = 1.6
 /** 粒子の板の一辺（m）の範囲。光は中心から縁へ向けて 0 になるので、見える光の粒はこれより小さい */
 const PARTICLE_SIZE_RANGE = [0.025, 0.05] as const
 
-/** 粒子の色と明るさ。木漏れ日に照らされた埃・胞子のような淡い黄緑 */
+/**
+ * 粒子の色と明るさ（線形色空間）。木漏れ日に照らされた埃・胞子のような淡い黄緑。
+ * 中心を周りの森よりずっと明るくし、Bloom（PostProcessing）で粒がにじんで光るようにする。
+ * 光は中心から縁へ向けて下がるため、強くにじむのは中心の小さな範囲だけ
+ */
 const PARTICLE_COLOR = "#f2f0c4"
-const PARTICLE_INTENSITY = 0.6
+const PARTICLE_INTENSITY = 1.2
 
 /** 粒子の配置の乱数の seed（森の seed とは独立） */
 const PARTICLE_SEED = 11

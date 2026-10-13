@@ -43,7 +43,7 @@ const MOSS_COLOR = "#6f8a3c"
 const DIRT_DARK_COLOR = "#5e4b35"
 const DIRT_LIGHT_COLOR = "#8a7452"
 
-/** 木漏れ日の色。地面の色に足す明るさの色味で、斜め前からの暖色の光（Atmosphere の SUN_COLOR）に寄せた */
+/** 木漏れ日の光の色。斜め前からの暖色の光（Atmosphere の SUN_COLOR）に寄せた */
 const DAPPLE_COLOR = "#fff0c8"
 
 /**
@@ -127,11 +127,22 @@ const POSITION_PATCH = /* glsl */ `
 `
 
 /**
- * 地面の模様と光の模様（根元の影・木漏れ日）を色に反映する処理（color_fragment の後に差し込む）。
- * vCourseCoord は applyCurvature が渡す。光の模様は地面の色（反射率）に掛けるため、光源の光にも環境光にも同じだけ効く
+ * 地面の模様と根元の影を色に反映する処理（color_fragment の後に差し込む）。
+ * vCourseCoord は applyCurvature が渡す。影は地面の色（反射率）に掛けるため、光源の光にも環境光にも同じだけ効く。
+ * 影の外か（groundLit）は、後の木漏れ日（SUNFLECK_PATCH）でも使う
  */
 const COLOR_PATCH = /* glsl */ `
-  diffuseColor.rgb *= groundSurfaceColor(vCourseCoord) * groundLightPattern(vCourseCoord);
+  float groundLit = 1.0 - groundBlobShadow(vCourseCoord);
+  diffuseColor.rgb *= groundSurfaceColor(vCourseCoord) * groundLit;
+`
+
+/**
+ * 木漏れ日の光を足す処理（emissivemap_fragment の後に差し込む）。
+ * totalEmissiveRadiance は光の計算の結果に足されるため、木漏れ日は光源・環境光の強さによらず一定の明るさで光る。
+ * 中心は Bloom のしきい値を超え、にじんで光って見える（ground.frag.glsl の GROUND_DAPPLE_BRIGHTNESS）
+ */
+const SUNFLECK_PATCH = /* glsl */ `
+  totalEmissiveRadiance += groundSunfleck(vCourseCoord, diffuseColor.rgb, groundLit);
 `
 
 /**
@@ -216,11 +227,16 @@ export class Ground {
     vertexShader = insertAfterShaderChunk(vertexShader, "beginnormal_vertex", NORMAL_PATCH)
     shader.vertexShader = insertAfterShaderChunk(vertexShader, "begin_vertex", POSITION_PATCH)
 
-    const fragmentShader = insertAfterShaderChunk(
+    let fragmentShader = insertAfterShaderChunk(
       shader.fragmentShader,
       "common",
       `${hashShader}\n${groundShader}\n${groundFragmentShader}`,
     )
-    shader.fragmentShader = insertAfterShaderChunk(fragmentShader, "color_fragment", COLOR_PATCH)
+    fragmentShader = insertAfterShaderChunk(fragmentShader, "color_fragment", COLOR_PATCH)
+    shader.fragmentShader = insertAfterShaderChunk(
+      fragmentShader,
+      "emissivemap_fragment",
+      SUNFLECK_PATCH,
+    )
   }
 }

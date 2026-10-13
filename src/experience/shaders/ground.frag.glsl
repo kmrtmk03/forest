@@ -1,6 +1,7 @@
 // 地面の模様（草地・道の土）と光の模様（根元の影・木漏れ日）を描くフラグメントシェーダー用の関数。
 // Ground.ts がフラグメントシェーダーの common チャンクの後（hash.glsl・ground.glsl の後）へ差し込み、
-// color_fragment チャンクの後で groundSurfaceColor() と groundLightPattern() の結果を diffuseColor に掛ける。
+// color_fragment チャンクの後で groundSurfaceColor() と groundBlobShadow() の結果を diffuseColor に掛け、
+// emissivemap_fragment チャンクの後で groundSunfleck() の光を totalEmissiveRadiance に足す。
 //
 // 模様はすべてコース座標 (x, s)（applyCurvature が渡す vCourseCoord）で描く。
 // カメラが進むと地面と同じ速度で模様が流れるため、滑って見えない。
@@ -60,8 +61,11 @@ const float GROUND_DAPPLE_SPOT_RADIUS_MIN = 0.15;
 const float GROUND_DAPPLE_SPOT_RADIUS_MAX = 0.95;
 // 半径の偏り。乱数（0〜1）をこの値で累乗してから範囲に当てはめ、小さな光を多く、大きな光をときどきにする
 const float GROUND_DAPPLE_SPOT_RADIUS_BIAS = 2.5;
-// 斑点の明るさ（地面の色に足す割合）
-const float GROUND_DAPPLE_STRENGTH = 1.1;
+// 斑点の中心の明るさ（線形色空間の輝度）。周りの地面よりずっと明るくし、Bloom（PostProcessing）で芯が強くにじむようにする。
+// 縁はなだらかに 0 へ下がる。1.0 を超えるとトーンマッピングのない今は白く飛ぶため、1.0 未満にする
+const float GROUND_DAPPLE_BRIGHTNESS = 0.6;
+// 斑点の色に地面の色味をどれだけ混ぜるか（0 = 光の色のまま、1 = 地面の色味）。草の上は黄緑、土の上は橙がかった光になる
+const float GROUND_DAPPLE_SURFACE_TINT = 0.5;
 
 // s 方向のセル番号を 1 周のセル数で折り返す。
 // GPU の除算は誤差を含むため、セルの中央（+0.5）で mod を取ってから floor して整数に揃える
@@ -202,11 +206,15 @@ float groundDapple(vec2 courseCoord, float pixelSize) {
   return spot * area;
 }
 
-// コース座標での光の模様（地面の色に掛ける倍率）。根元の影で暗くし、影の外に木漏れ日の斑点を足す
-vec3 groundLightPattern(vec2 courseCoord) {
+// 木漏れ日の光（線形色空間の明るさ）。地面の光の計算（Lambert）の結果に、自ら光る成分として足す。
+// 木漏れ日は周りの日陰より何倍も強い日差しなので、地面の色を明るくするだけでは Bloom のしきい値に届かない。
+// 地面の色（反射率）を掛けると暗い草地の上では光らないため、地面の色は色味（明るさを 1 にそろえた色）としてだけ混ぜる
+// surfaceColor: 地面の色（diffuseColor.rgb。根元の影を掛けた後の値）
+// lit: 根元の影の外か（1 - groundBlobShadow）。影の中には木漏れ日を落とさない（根元が明るく抜けると影が浮いて見える）
+vec3 groundSunfleck(vec2 courseCoord, vec3 surfaceColor, float lit) {
   float pixelSize = length(fwidth(courseCoord));
-  float lit = 1.0 - groundBlobShadow(courseCoord);
-  // 影の中には木漏れ日を落とさない（根元が明るく抜けると影が浮いて見える）
-  vec3 dapple = uDappleColor * (groundDapple(courseCoord, pixelSize) * GROUND_DAPPLE_STRENGTH * lit);
-  return lit * (1.0 + dapple);
+  float dapple = groundDapple(courseCoord, pixelSize) * lit;
+  vec3 surfaceTint = surfaceColor / max(dot(surfaceColor, vec3(0.2126, 0.7152, 0.0722)), 1e-4);
+  vec3 tint = mix(vec3(1.0), surfaceTint, GROUND_DAPPLE_SURFACE_TINT);
+  return uDappleColor * tint * (dapple * GROUND_DAPPLE_BRIGHTNESS);
 }
