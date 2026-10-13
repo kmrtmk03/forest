@@ -2,14 +2,16 @@ import {
   Color,
   Group,
   MathUtils,
+  Matrix4,
   Mesh,
   MeshBasicMaterial,
+  PlaneGeometry,
   Raycaster,
   SphereGeometry,
   Vector2,
   Vector3,
 } from "three"
-import type { Camera, Intersection, Object3D } from "three"
+import type { Camera, Fog, Intersection, Object3D, ShaderMaterial } from "three"
 
 import type { TOrbId, TOrbMarker } from "@/data/orb.type"
 import type { ICurvatureUniforms } from "@/experience/curvature/applyCurvature"
@@ -24,25 +26,29 @@ import {
 } from "@/experience/world/world.constants"
 
 import { dispatchOrbSelect } from "./orb.events"
+import {
+  createOrbFlameGeometry,
+  createOrbFlameMaterial,
+  createOrbFlameSharedUniforms,
+} from "./orbFlame.utils"
+import type { IOrbFlameSharedUniforms } from "./orbFlame.utils"
 
 // ---- 見た目 ----
 
-/** オーブ本体の半径（m） */
-const ORB_RADIUS = 0.25
-
-/** 球の分割数（横・縦）。半径 0.25m なら、近くで見ても角が目立たない程度 */
-const ORB_WIDTH_SEGMENTS = 24
-const ORB_HEIGHT_SEGMENTS = 16
+/**
+ * データに色の指定がないときの炎の色（参考画像の青白い炎に近い水色）。
+ * TODO: Phase 7 で光の粒と Bloom を足す
+ */
+const ORB_DEFAULT_COLOR = "#8fd8ff"
 
 /**
- * 本体を包む半透明の殻の半径（m）と不透明度。光っているように見せる仮の表現。
- * TODO: Phase 7 で Bloom と HDR の発光・光の粒に置き換える
+ * オーブごとに炎の揺らぎ方を変える乱数の種の間隔。
+ * ノイズの座標をこれだけずらすと、隣のオーブと揺らぎが似なくなる
  */
-const ORB_HALO_RADIUS = 0.42
-const ORB_HALO_OPACITY = 0.25
+const ORB_FLAME_SEED_STEP = 7.31
 
-/** データに色の指定がないときの色 */
-const ORB_DEFAULT_COLOR = "#fff2c4"
+/** 板の向きを決めるときに、カメラがほぼ真上・真下にいて向きが定まらないとみなす長さの 2 乗 */
+const BILLBOARD_MIN_LENGTH_SQ = 1e-8
 
 // ---- 動き ----
 
@@ -74,8 +80,11 @@ const ORB_SHRINK_END_DISTANCE = 0.6
 
 // ---- クリック・ホバー ----
 
-/** クリック判定用の球の半径（m）。見た目より大きくして、小さなオーブも押しやすくする（計画書 §13） */
-const ORB_HIT_RADIUS = 0.5
+/**
+ * クリック判定用の球の半径（m）。中心は火の玉の中心。
+ * 見た目より大きくして押しやすくする（計画書 §13）。炎を 1.5 倍にしたのに合わせて 0.5m から 1.5 倍にした
+ */
+const ORB_HIT_RADIUS = 0.75
 
 /** クリックとして受け付ける最も遠い距離（m、カメラからの直線距離）。霧が濃く見えにくいオーブは選ばせない */
 const PICK_MAX_DISTANCE = 40
@@ -84,25 +93,24 @@ const PICK_MAX_DISTANCE = 40
 const CLICK_MAX_MOVE_PX = 6
 const CLICK_MAX_DURATION_MS = 400
 
-/** ホバー中のオーブの拡大率と、白に寄せる割合（0〜1） */
+/** ホバー中のオーブの拡大率と明るさの倍率 */
 const ORB_HOVER_SCALE = 1.15
-const ORB_HOVER_WHITEN = 0.35
+const ORB_HOVER_INTENSITY = 1.4
 
-/** ホバー時に白へ寄せるための色 */
-const WHITE = new Color("#ffffff")
+/** 判定用の球の分割数（横・縦）。描画しないので粗くてよい */
+const HIT_WIDTH_SEGMENTS = 12
+const HIT_HEIGHT_SEGMENTS = 8
 
 /** 1 個のオーブの描画用のデータ */
 interface IOrb {
   id: TOrbId
   slot: IOrbSlot
-  /** 本体・殻・判定用の球をまとめたグループ。位置と大きさはこれに設定する */
+  /** 炎の板と判定用の球をまとめたグループ。位置・向き・大きさはこれに設定する */
   group: Group
-  coreMaterial: MeshBasicMaterial
-  haloMaterial: MeshBasicMaterial
+  /** 炎のマテリアル（オーブごとに色と乱数の種が違う） */
+  flameMaterial: ShaderMaterial
   /** クリック判定用の球（描画しない） */
   hit: Mesh
-  /** データで指定された色（ホバーを外したときに戻す） */
-  baseColor: Color
   /** 浮遊の位相（ラジアン） */
   phase: number
 }
@@ -121,8 +129,10 @@ interface IOrbManagerOptions {
   host: HTMLElement
   /** リスナー解除用。abort() で全リスナーが外れる */
   signal: AbortSignal
-  /** クリック・ホバーの判定に使うカメラ */
+  /** クリック・ホバーの判定と、炎の板をカメラへ向けるのに使うカメラ */
   camera: Camera
+  /** シーンの霧（Atmosphere の fog）。炎は加算合成のため、この距離に合わせて自分で明るさを落とす */
+  fog: Fog
   /** 曲げ変換の共有 uniform。カメラのコース位置と惑星半径を読む（World が毎フレーム更新する） */
   curvatureUniforms: ICurvatureUniforms
   /** オーブの描画用データ。並び順がコース上の並び順になる */
@@ -146,11 +156,12 @@ export class OrbManager {
   private readonly host: HTMLElement
   private readonly camera: Camera
   private readonly curvatureUniforms: ICurvatureUniforms
+  private readonly fog: Fog
   private readonly orbs: IOrb[]
   /** 判定用の球からオーブを引く */
   private readonly orbByHit = new Map<Object3D, IOrb>()
-  private readonly coreGeometry: SphereGeometry
-  private readonly haloGeometry: SphereGeometry
+  private readonly flameGeometry: PlaneGeometry
+  private readonly flameUniforms: IOrbFlameSharedUniforms = createOrbFlameSharedUniforms()
   private readonly hitGeometry: SphereGeometry
   private readonly hitMaterial: MeshBasicMaterial
 
@@ -164,6 +175,10 @@ export class OrbManager {
 
   // 毎フレームの処理で使い回す作業用オブジェクト（毎回 new しない）
   private readonly relative = new Vector3()
+  private readonly billboardUp = new Vector3()
+  private readonly billboardNormal = new Vector3()
+  private readonly billboardRight = new Vector3()
+  private readonly billboardBasis = new Matrix4()
   private readonly pointerClient = new Vector2()
   private readonly pointerNdc = new Vector2()
   private readonly raycaster = new Raycaster()
@@ -175,7 +190,7 @@ export class OrbManager {
    * @throws オーブのデータの件数が 1 周のオーブの数（ORB_COUNT）と合わない場合、
    *   ORB_SPACING が COURSE_LENGTH を割り切らない場合。どちらも GPU のリソースを作る前に投げる
    */
-  constructor({ host, signal, camera, curvatureUniforms, markers }: IOrbManagerOptions) {
+  constructor({ host, signal, camera, fog, curvatureUniforms, markers }: IOrbManagerOptions) {
     if (markers.length !== ORB_COUNT) {
       throw new Error(
         `OrbManager: オーブのデータが ${markers.length} 件ですが、1 周に置くオーブは ${ORB_COUNT} 個です`,
@@ -186,12 +201,12 @@ export class OrbManager {
     this.host = host
     this.camera = camera
     this.curvatureUniforms = curvatureUniforms
+    this.fog = fog
     this.raycaster.far = PICK_MAX_DISTANCE
 
     // 形は全オーブで共有し、色を変えるマテリアルだけを 1 個ずつ作る
-    this.coreGeometry = new SphereGeometry(ORB_RADIUS, ORB_WIDTH_SEGMENTS, ORB_HEIGHT_SEGMENTS)
-    this.haloGeometry = new SphereGeometry(ORB_HALO_RADIUS, ORB_WIDTH_SEGMENTS, ORB_HEIGHT_SEGMENTS)
-    this.hitGeometry = new SphereGeometry(ORB_HIT_RADIUS, ORB_WIDTH_SEGMENTS, ORB_HEIGHT_SEGMENTS)
+    this.flameGeometry = createOrbFlameGeometry()
+    this.hitGeometry = new SphereGeometry(ORB_HIT_RADIUS, HIT_WIDTH_SEGMENTS, HIT_HEIGHT_SEGMENTS)
     // visible: false のマテリアルは描画されないが、Raycaster の判定には使える
     this.hitMaterial = new MeshBasicMaterial({ visible: false })
 
@@ -212,6 +227,11 @@ export class OrbManager {
     this.elapsedSeconds += deltaSeconds
     const { x: cameraX, y: cameraS } = this.curvatureUniforms.uCurvatureCamera.value
     const planetRadius = this.curvatureUniforms.uPlanetRadius.value
+
+    // 炎の揺らぎの時間と、霧の距離（デバッグ GUI で変えられるため毎フレーム写す）
+    this.flameUniforms.uTime.value = this.elapsedSeconds
+    this.flameUniforms.uFogNear.value = this.fog.near
+    this.flameUniforms.uFogFar.value = this.fog.far
 
     this.visibleHits.length = 0
     this.orbs.forEach((orb) => {
@@ -242,6 +262,7 @@ export class OrbManager {
       }
 
       orb.group.visible = true
+      this.faceCamera(orb.group, planetRadius)
       orb.group.scale.setScalar(shrink * (orb === this.hoveredOrb ? ORB_HOVER_SCALE : 1))
       // 同じフレームのうちにクリック・ホバーを判定できるよう、行列をすぐ更新する（描画時の更新を待たない）
       orb.group.updateMatrixWorld()
@@ -254,36 +275,26 @@ export class OrbManager {
 
   /** ジオメトリ・マテリアルを破棄し、カーソルを元に戻す。リスナーは Experience の abort() で外れる */
   dispose(): void {
-    this.coreGeometry.dispose()
-    this.haloGeometry.dispose()
+    this.flameGeometry.dispose()
     this.hitGeometry.dispose()
     this.hitMaterial.dispose()
-    this.orbs.forEach(({ coreMaterial, haloMaterial }) => {
-      coreMaterial.dispose()
-      haloMaterial.dispose()
-    })
+    this.orbs.forEach(({ flameMaterial }) => flameMaterial.dispose())
     this.group.clear()
     this.host.style.cursor = ""
   }
 
-  /** 1 個のオーブ（本体・殻・判定用の球）を作り、グループへ追加する */
+  /** 1 個のオーブ（炎の板・判定用の球）を作り、グループへ追加する */
   private createOrb(slot: IOrbSlot, marker: TOrbMarker): IOrb {
-    const baseColor = new Color(marker.color ?? ORB_DEFAULT_COLOR)
-    // 光の影響を受けない MeshBasicMaterial で、暗い森の中でも明るく見せる。霧は通常どおり掛かる
-    const coreMaterial = new MeshBasicMaterial({ color: baseColor })
-    const haloMaterial = new MeshBasicMaterial({
-      color: baseColor,
-      transparent: true,
-      opacity: ORB_HALO_OPACITY,
-      // 殻が本体や後ろの物を深度で隠さないようにする
-      depthWrite: false,
-    })
+    const flameMaterial = createOrbFlameMaterial(
+      this.flameUniforms,
+      new Color(marker.color ?? ORB_DEFAULT_COLOR),
+      slot.index * ORB_FLAME_SEED_STEP,
+    )
 
-    const core = new Mesh(this.coreGeometry, coreMaterial)
-    const halo = new Mesh(this.haloGeometry, haloMaterial)
+    const flame = new Mesh(this.flameGeometry, flameMaterial)
     const hit = new Mesh(this.hitGeometry, this.hitMaterial)
     const group = new Group()
-    group.add(core, halo, hit)
+    group.add(flame, hit)
     // 最初は表示したままにしておく。compileAsync は表示中の物だけをコンパイルするため、
     // 非表示にすると、オーブが初めて描画範囲に入ったときにシェーダーのコンパイルでカクつく。
     // 描画は最初の update の後なので、この時点の位置（原点）で描かれることはない
@@ -293,14 +304,34 @@ export class OrbManager {
       id: marker.id,
       slot,
       group,
-      coreMaterial,
-      haloMaterial,
+      flameMaterial,
       hit,
-      baseColor,
       phase: slot.index * ORB_PHASE_STEP,
     }
     this.orbByHit.set(hit, orb)
     return orb
+  }
+
+  /**
+   * 炎の板をカメラへ向ける。板の縦軸はその場所での惑星の真上（球の中心から外向き）に固定し、
+   * その軸のまわりだけ回す。炎が惑星の曲面に対してまっすぐ立ち、どの向きから見ても炎の形に見える
+   * @param group 位置を設定済みのオーブのグループ
+   * @param planetRadius 見た目の惑星半径（m）。球の中心は (0, -planetRadius, 0)
+   */
+  private faceCamera(group: Group, planetRadius: number): void {
+    const up = this.billboardUp.copy(group.position)
+    up.y += planetRadius
+    up.normalize()
+
+    // カメラへの向きを、縦軸に垂直な面へ落としたものを板の表（+Z）にする
+    const normal = this.billboardNormal.subVectors(this.camera.position, group.position)
+    normal.addScaledVector(up, -normal.dot(up))
+    // カメラが真上・真下にいると向きが決まらないため、前のフレームの向きのままにする
+    if (normal.lengthSq() < BILLBOARD_MIN_LENGTH_SQ) return
+    normal.normalize()
+
+    const right = this.billboardRight.crossVectors(up, normal)
+    group.quaternion.setFromRotationMatrix(this.billboardBasis.makeBasis(right, up, normal))
   }
 
   /**
@@ -325,12 +356,12 @@ export class OrbManager {
     return nearest ? (this.orbByHit.get(nearest.object) ?? null) : null
   }
 
-  /** ホバー中のオーブを切り替え、色とカーソルを反映する。大きさは次の update で反映される */
+  /** ホバー中のオーブを切り替え、明るさとカーソルを反映する。大きさは次の update で反映される */
   private setHoveredOrb(orb: IOrb | null): void {
     if (orb === this.hoveredOrb) return
 
-    this.hoveredOrb?.coreMaterial.color.copy(this.hoveredOrb.baseColor)
-    orb?.coreMaterial.color.copy(orb.baseColor).lerp(WHITE, ORB_HOVER_WHITEN)
+    if (this.hoveredOrb) this.hoveredOrb.flameMaterial.uniforms.uIntensity.value = 1
+    if (orb) orb.flameMaterial.uniforms.uIntensity.value = ORB_HOVER_INTENSITY
     this.hoveredOrb = orb
     this.host.style.cursor = orb ? "pointer" : ""
   }
