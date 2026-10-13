@@ -102,7 +102,7 @@ src/
 - 地面の起伏・道の中心線も同様に、`procedural/path.utils.ts` と `shaders/ground.glsl` を同じ式に保つ。定数は `path.constants.ts` から `material.defines` で GLSL へ渡す
 - 標準チャンクへの差し込みは `shaders/shaderChunk.utils.ts` の `insertAfterShaderChunk` / `replaceShaderChunk` を使う（チャンクが見つからなければ例外になる）。GLSL のコメントに `#include <...>` の文字列を書かない（置換に巻き込まれてコンパイルエラーになる）
 - 曲げ変換を使うマテリアルの霧は、ビューの奥行きではなくカメラからの直線距離で掛かる（`applyCurvature` が fog_vertex を置き換える）
-- 加算合成で光らせるマテリアル（オーブの炎など）は、標準の `AdditiveBlending` を使わず、`orbs/orbFlame.utils.ts` と同じ `CustomBlending`（色だけを足し、アルファは描画先のまま）にする。葉の `alphaToCoverage` と干渉し、板ポリの四角い輪郭が浮き出るため。板ポリに描く光は、板の端より内側で必ず 0 にする
+- 加算合成で光らせるマテリアル（オーブの炎など）は、標準の `AdditiveBlending` を使わず、`shaders/additiveBlending.utils.ts` の `ADDITIVE_COLOR_BLENDING`（`CustomBlending` で色だけを足し、アルファは描画先のまま）をスプレッドで渡す。葉の `alphaToCoverage` と干渉し、板ポリの四角い輪郭が浮き出るため。板ポリに描く光は、板の端より内側で必ず 0 にする
 
 ### ループ（円環座標）
 
