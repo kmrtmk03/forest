@@ -29,6 +29,7 @@ Phase を進めたり方針を決めたりしたら、引き継ぎメモの状�
 | -------------------- | ---------------------------------------------------------------------------- |
 | フレームワーク       | Astro 7（Vite 内蔵）。UI フレームワークの統合は入れていない                  |
 | 3D                   | `three`（0.186 系）を直接使う。`@types/three` は devDependencies             |
+| 画像                 | `astro:assets` の `<Image />`。最適化に `sharp` を使う（dependencies）       |
 | 言語                 | TypeScript strict（`astro/tsconfigs/strict`）。シェーダーは `.glsl` ファイル |
 | パッケージマネージャ | **pnpm 11.5.2 専用**。npm / yarn は `scripts/ensure-pnpm.cjs` で失敗する     |
 | Node                 | 24.16.0（`.node-version`）                                                   |
@@ -40,6 +41,7 @@ Phase を進めたり方針を決めたりしたら、引き継ぎメモの状�
 - Tailwind、状態管理ライブラリ（zustand 等）、GSAP、物理エンジン
 - WebGPURenderer / TSL（曲げ変換が `onBeforeCompile` 前提のため。レンダラーは WebGLRenderer）
 - 新しい依存の追加は、計画書に記載があるか、ユーザーの了承を得てから行う
+- `pnpm add` はロックファイルを pnpm の書式で書き直す。リポジトリのロックファイルは Prettier で整形済みのため、追加後に `pnpm exec prettier --write pnpm-lock.yaml` で書式を戻す
 
 ## コマンド
 
