@@ -18,10 +18,13 @@ const FOG_DISTANCE_MIN = 0
 const FOG_DISTANCE_MAX = CAMERA_FAR
 const FOG_DISTANCE_STEP = 0.5
 
-/** Bloom のスライダーの範囲（強さ・広がり・しきい値）と刻み */
+/**
+ * Bloom のスライダーの範囲（強さ・広がり・しきい値）と刻み。
+ * しきい値は画面の色（sRGB、0〜1）の輝度と比べるため（PostProcessing を参照）、1 を超える値は意味がない
+ */
 const BLOOM_STRENGTH_MAX = 3
 const BLOOM_RADIUS_MAX = 1
-const BLOOM_THRESHOLD_MAX = 3
+const BLOOM_THRESHOLD_MAX = 1
 const BLOOM_STEP = 0.01
 
 /** seed をランダムに選ぶときの上限（32bit 符号なし整数の範囲） */
@@ -76,7 +79,7 @@ interface IDebugBloomTarget {
   strength: number
   /** にじみの広がり（0〜1） */
   radius: number
-  /** 光らせる輝度のしきい値（線形色空間） */
+  /** 光らせる輝度のしきい値（トーンマッピングと sRGB 変換が済んだ画面の色、0〜1） */
   threshold: number
 }
 
@@ -175,7 +178,7 @@ export class Debug {
       .add(fog, "far", FOG_DISTANCE_MIN, FOG_DISTANCE_MAX, FOG_DISTANCE_STEP)
       .name("fog far (m)")
 
-    // Bloom: しきい値を下げるほど暗い物まで光る。木漏れ日・浮遊粒子・オーブの炎だけが光る値を探す
+    // Bloom: しきい値を下げるほど暗い物まで光る。強さ・広がりと合わせて、画面全体のにじみ方を探す
     const bloomFolder = gui.addFolder("Bloom")
     bloomFolder.add(bloom, "strength", 0, BLOOM_STRENGTH_MAX, BLOOM_STEP)
     bloomFolder.add(bloom, "radius", 0, BLOOM_RADIUS_MAX, BLOOM_STEP)
