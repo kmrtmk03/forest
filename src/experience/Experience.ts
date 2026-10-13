@@ -75,6 +75,7 @@ export class Experience {
           radiusUniform: this.world.curvatureUniforms.uPlanetRadius,
           fog: this.world.atmosphere.fog,
           forest: this.world.forest,
+          scroll: this.scrollController,
         })
       : null
     // 待っている間にページを離れた場合は、何も始めない

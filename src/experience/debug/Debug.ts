@@ -2,8 +2,8 @@ import type { Fog, IUniform } from "three"
 import type GUI from "three/addons/libs/lil-gui.module.min.js"
 import type Stats from "three/addons/libs/stats.module.js"
 
-import { CAMERA_FAR } from "@/experience/controls/controls.constants"
-import { PLANET_RADIUS_CANDIDATES } from "@/experience/world/world.constants"
+import { CAMERA_FAR, MAX_SPEED } from "@/experience/controls/controls.constants"
+import { COURSE_LENGTH, PLANET_RADIUS_CANDIDATES } from "@/experience/world/world.constants"
 
 /** 惑星半径スライダーの範囲（m） */
 const PLANET_RADIUS_MIN = 40
@@ -20,10 +20,47 @@ const FOG_DISTANCE_STEP = 0.5
 /** seed をランダムに選ぶときの上限（32bit 符号なし整数の範囲） */
 const SEED_RANGE = 2 ** 32
 
+/**
+ * ループ検証で最初にジャンプする先のコース s（m）。
+ * 1 周の境界（0m）の 5m 手前から歩き始め、境界をまたぐ前後を見比べるため
+ */
+const LOOP_JUMP_DEFAULT_S = COURSE_LENGTH - 5
+
+/** ジャンプ先のコース s の入力の刻み（m）。境界の直前・直後（99.95m など）を指定できる細かさにする */
+const LOOP_JUMP_STEP = 0.01
+
+/**
+ * ジャンプ先のコース s の上限（m）。
+ * COURSE_LENGTH ちょうどを許すと次の周の 0m になり、周回数が 1 増えてしまうため、1 刻み分だけ手前にする
+ */
+const LOOP_JUMP_MAX_S = COURSE_LENGTH - LOOP_JUMP_STEP
+
+/** 少しだけ周回を進める・戻すときの周回数。10 周以上で挙動が変わらないことを確かめる（計画書 §23 Phase 4） */
+const LOOP_FEW_LAPS = 10
+
+/**
+ * 一気に周回を進めるときの周回数（1 万周 = 100km）。
+ * 進行距離が大きくなっても、折り返し後の位置（courseS）と見た目が変わらないこと（数値誤差の蓄積がないこと）を確かめる
+ */
+const LOOP_MANY_LAPS = 10_000
+
+/** 自動歩行の速度の刻み（m/s） */
+const AUTO_WALK_SPEED_STEP = 0.1
+
 /** seed を切り替えて森を作り直せる対象（World の Forest） */
 interface IDebugSeedTarget {
   readonly seed: number
   setSeed(seed: number): void
+}
+
+/** ループ検証で進行距離を直接動かす対象（Experience の ScrollController） */
+interface IDebugScrollTarget {
+  /** 累計の進行距離（m） */
+  readonly distance: number
+  /** 慣性を付けずに指定の進行距離へ移動する */
+  teleport(distance: number): void
+  /** 一定の速度（m/s）で進み続ける。0 で止める */
+  setAutoWalkSpeed(speed: number): void
 }
 
 /** デバッグ GUI から調整する対象 */
@@ -34,9 +71,11 @@ interface IDebugTargets {
   fog: Fog
   /** 配置物の森（seed の切り替えに使う） */
   forest: IDebugSeedTarget
+  /** 進行距離（ループ検証のジャンプ・自動歩行に使う） */
+  scroll: IDebugScrollTarget
 }
 
-/** デバッグ表示で読み取る現在値 */
+/** デバッグ表示で読み取る現在値（Experience が毎フレーム渡す） */
 interface IDebugReadouts {
   /** 累計の進行距離（m） */
   distance: number
@@ -50,24 +89,40 @@ interface IDebugReadouts {
   triangles: number
 }
 
+/** Status フォルダに表示する値。渡された現在値に、Debug の中で求める値を足したもの */
+interface IDebugStatus extends IDebugReadouts {
+  /** 周回数（0m を前進でまたぐと 1 増え、後退でまたぐと 1 減る。負にもなる） */
+  lap: number
+}
+
+/**
+ * 進行距離から周回数を求める
+ * @param distance 累計の進行距離（m）
+ */
+const toLap = (distance: number): number => Math.floor(distance / COURSE_LENGTH)
+
 /**
  * URL に ?debug を付けたときだけ使うデバッグ GUI（lil-gui）と FPS 表示（stats）。
  * 通常の閲覧時にライブラリを読み込まないよう、Debug.create で動的 import する。
  */
 export class Debug {
-  private readonly readouts: IDebugReadouts = {
+  private readonly status: IDebugStatus = {
     distance: 0,
     courseS: 0,
+    lap: 0,
     velocity: 0,
     drawCalls: 0,
     triangles: 0,
   }
 
+  private readonly scroll: IDebugScrollTarget
+
   private constructor(
     private readonly gui: GUI,
     private readonly stats: Stats,
-    { radiusUniform, fog, forest }: IDebugTargets,
+    { radiusUniform, fog, forest, scroll }: IDebugTargets,
   ) {
+    this.scroll = scroll
     document.body.append(stats.dom)
 
     // 惑星半径: 候補値の切り替えと、細かい調整用のスライダー
@@ -104,12 +159,35 @@ export class Debug {
       .onFinishChange((seed: number) => forest.setSeed(seed))
     forestFolder.add(forestParams, "random").name("random seed")
 
-    const status = gui.addFolder("Status")
-    status.add(this.readouts, "distance").decimals(2).listen().disable()
-    status.add(this.readouts, "courseS").decimals(2).listen().disable()
-    status.add(this.readouts, "velocity").decimals(2).listen().disable()
-    status.add(this.readouts, "drawCalls").listen().disable()
-    status.add(this.readouts, "triangles").listen().disable()
+    // ループ検証: 1 周の境界（0m）の手前へのジャンプ、周回の早送り、一定速度の自動歩行
+    const loop = gui.addFolder("Loop")
+    const loopParams = {
+      jumpS: LOOP_JUMP_DEFAULT_S,
+      // 周回数はいまのまま、コース s だけを指定の位置へ動かす
+      jump: () => scroll.teleport(toLap(scroll.distance) * COURSE_LENGTH + loopParams.jumpS),
+      forwardFewLaps: () => this.shiftLaps(LOOP_FEW_LAPS),
+      backwardFewLaps: () => this.shiftLaps(-LOOP_FEW_LAPS),
+      forwardManyLaps: () => this.shiftLaps(LOOP_MANY_LAPS),
+      // 自動歩行: 慣性を通さず一定の速度で進める（境界をまたぐ前後を同じ速さで見比べるため）
+      autoWalkSpeed: 0,
+    }
+    loop.add(loopParams, "jumpS", 0, LOOP_JUMP_MAX_S, LOOP_JUMP_STEP).name("jump s (m)")
+    loop.add(loopParams, "jump").name("jump to s")
+    loop.add(loopParams, "forwardFewLaps").name(`+${LOOP_FEW_LAPS} laps`)
+    loop.add(loopParams, "backwardFewLaps").name(`-${LOOP_FEW_LAPS} laps`)
+    loop.add(loopParams, "forwardManyLaps").name(`+${LOOP_MANY_LAPS} laps`)
+    loop
+      .add(loopParams, "autoWalkSpeed", -MAX_SPEED, MAX_SPEED, AUTO_WALK_SPEED_STEP)
+      .name("auto walk (m/s)")
+      .onChange((speed: number) => scroll.setAutoWalkSpeed(speed))
+
+    const statusFolder = gui.addFolder("Status")
+    statusFolder.add(this.status, "distance").decimals(2).listen().disable()
+    statusFolder.add(this.status, "courseS").decimals(2).listen().disable()
+    statusFolder.add(this.status, "lap").listen().disable()
+    statusFolder.add(this.status, "velocity").decimals(2).listen().disable()
+    statusFolder.add(this.status, "drawCalls").listen().disable()
+    statusFolder.add(this.status, "triangles").listen().disable()
   }
 
   /** ?debug が付いているかどうか */
@@ -131,12 +209,18 @@ export class Debug {
 
   /** 毎フレームの表示更新。Experience のループの最後に呼ぶ */
   update(readouts: IDebugReadouts): void {
-    Object.assign(this.readouts, readouts)
+    Object.assign(this.status, readouts)
+    this.status.lap = toLap(readouts.distance)
     this.stats.update()
   }
 
   dispose(): void {
     this.gui.destroy()
     this.stats.dom.remove()
+  }
+
+  /** コース s はいまのまま、周回数だけを進める（負なら戻す） */
+  private shiftLaps(laps: number): void {
+    this.scroll.teleport(this.scroll.distance + laps * COURSE_LENGTH)
   }
 }
