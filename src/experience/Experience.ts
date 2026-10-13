@@ -8,6 +8,8 @@ import { Ticker } from "./core/Ticker"
 import { Viewport } from "./core/Viewport"
 import type { IViewportSize } from "./core/Viewport"
 import { Debug } from "./debug/Debug"
+import { MODAL_CHANGE_EVENT } from "./orbs/orb.events"
+import type { IModalChangeDetail } from "./orbs/orb.events"
 import { OrbManager } from "./orbs/OrbManager"
 import { World } from "./world/World"
 
@@ -23,6 +25,8 @@ type TExperienceState = "loading" | "ready"
  * 毎フレームの更新は次の一方向の流れで行い、クラス同士は互いを直接参照しない。
  *   Ticker → ScrollController.update → World.update（曲げ変換の uniform 更新を含む）
  *   → OrbManager.update（更新済みの uniform からオーブの位置を求める）→ 描画
+ *
+ * モーダルが開いている間（forest:modal-change）は移動とオーブの操作を止める。描画は続け、背景の森は動いて見える
  */
 export class Experience {
   /** すべてのイベントリスナーをこの signal で登録し、destroy() で一括解除する */
@@ -78,6 +82,7 @@ export class Experience {
       // Viewport は生成時に 1 回 handleResize を呼ぶため、renderer と camera の生成後に作る
       this.viewport = new Viewport(host, signal, this.handleResize)
       this.ticker = new Ticker(this.renderer, signal, this.handleTick)
+      window.addEventListener(MODAL_CHANGE_EVENT, this.handleModalChange, { signal })
     } catch (error) {
       // 生成に失敗すると呼び出し側は destroy() を呼べないため、ここまでに作ったリスナー・World・レンダラーを解放する。
       // World・OrbManager は自分の中で失敗したときに、作った分を破棄してから（または作る前に）例外を投げる
@@ -139,6 +144,12 @@ export class Experience {
     // 第 3 引数 false: canvas の CSS サイズはスタイルシート側（100%）に任せる
     this.renderer.setSize(width, height, false)
     this.cameraController.resize(width / height)
+  }
+
+  /** モーダルが開いている間は移動とオーブのクリック・ホバーを止め、閉じたら再開する */
+  private readonly handleModalChange = ({ detail }: CustomEvent<IModalChangeDetail>): void => {
+    this.scrollController.setEnabled(!detail.isOpen)
+    this.orbManager.setEnabled(!detail.isOpen)
   }
 
   /** 毎フレームの更新と描画 */

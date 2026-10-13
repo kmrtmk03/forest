@@ -141,6 +141,7 @@ interface IOrbManagerOptions {
  * 毎フレーム、World の update（曲げ変換の uniform の更新）の後、描画の前に update(dt) を呼ぶこと。
  * 呼ばないとオーブが動かず、ホバーの判定も更新されない。
  * クリックされたオーブは forest:orb-select（orb.events.ts）で知らせる。
+ * setEnabled(false) の間はクリック・ホバーを受け付けない（モーダル表示中に使う）。
  */
 export class OrbManager {
   /** オーブをまとめたグループ。シーンへ追加すること */
@@ -165,6 +166,8 @@ export class OrbManager {
   private readonly hoverPointer = new Vector2()
   /** 押している最中のポインタ。押していないときは null */
   private press: IPointerPress | null = null
+  /** クリック・ホバーを受け付けるか（setEnabled を参照） */
+  private isEnabled = true
 
   // 毎フレームの処理で使い回す作業用オブジェクト（毎回 new しない）
   private readonly relative = new Vector3()
@@ -261,8 +264,26 @@ export class OrbManager {
 
     // オーブもカメラも動くため、マウスが止まっていても毎フレーム判定し直す（10 個の球なので軽い）
     this.setHoveredOrb(
-      this.isPointerInside ? this.pickOrb(this.hoverPointer.x, this.hoverPointer.y) : null,
+      this.isEnabled && this.isPointerInside
+        ? this.pickOrb(this.hoverPointer.x, this.hoverPointer.y)
+        : null,
     )
+  }
+
+  /**
+   * クリック・ホバーの受け付けを切り替える。止めるときはホバーの強調とカーソルをすぐ戻し、
+   * 押している最中の操作も捨てる（モーダルの背面でオーブが光ったまま残らないようにするため）。
+   * マウスの位置も忘れる。止めている間（モーダルで背面が inert の間）は pointermove / pointerleave が届かず、
+   * 再開した直後に古い位置でホバーを判定してしまうため。次に pointermove が来たら判定を再開する
+   * @param isEnabled true で受け付ける、false で無視する
+   */
+  setEnabled(isEnabled: boolean): void {
+    this.isEnabled = isEnabled
+    if (isEnabled) return
+
+    this.press = null
+    this.isPointerInside = false
+    this.setHoveredOrb(null)
   }
 
   /** ジオメトリ・マテリアルを破棄し、カーソルを元に戻す。リスナーは Experience の abort() で外れる */
@@ -365,7 +386,7 @@ export class OrbManager {
 
   /** 押した位置と時刻を覚える。主ボタン（タッチ・ペンの接触を含む）以外は無視する */
   private readonly handlePointerDown = (event: PointerEvent): void => {
-    if (!event.isPrimary || event.button !== 0) return
+    if (!this.isEnabled || !event.isPrimary || event.button !== 0) return
     this.press = {
       pointerId: event.pointerId,
       clientX: event.clientX,
