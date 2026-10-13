@@ -103,6 +103,21 @@ export class ScrollController {
     this.currentVelocity = step / dt
   }
 
+  /**
+   * 慣性を付けずに、指定の進行距離へ瞬時に移動する（デバッグ GUI のループ検証用）。
+   * 目標位置も同じ値にそろえ、移動後にカメラが元の位置へ戻ろうとしないようにする
+   * @param distance 移動先の累計の進行距離（m）。有限の値であること
+   * @throws distance が有限の数でない場合（NaN が入ると以後の位置計算がすべて NaN になるため）
+   */
+  teleport(distance: number): void {
+    if (!Number.isFinite(distance)) {
+      throw new Error(`ScrollController: 移動先の距離が不正です（${distance}）`)
+    }
+    this.targetDistance = distance
+    this.currentDistance = distance
+    this.currentVelocity = 0
+  }
+
   /** 目標位置を動かす。現在位置からの先行量を MAX_LEAD_METERS までに制限する */
   private moveTarget(meters: number): void {
     this.targetDistance = MathUtils.clamp(
