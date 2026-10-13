@@ -59,6 +59,8 @@ interface IDebugScrollTarget {
   readonly distance: number
   /** 慣性を付けずに指定の進行距離へ移動する */
   teleport(distance: number): void
+  /** 一定の速度（m/s）で進み続ける。0 で止める */
+  setAutoWalkSpeed(speed: number): void
 }
 
 /** デバッグ GUI から調整する対象 */
@@ -73,14 +75,12 @@ interface IDebugTargets {
   scroll: IDebugScrollTarget
 }
 
-/** デバッグ表示で読み取る現在値 */
+/** デバッグ表示で読み取る現在値（Experience が毎フレーム渡す） */
 interface IDebugReadouts {
   /** 累計の進行距離（m） */
   distance: number
   /** コース上の位置（m、0〜COURSE_LENGTH） */
   courseS: number
-  /** 周回数（0m を前進でまたぐと 1 増え、後退でまたぐと 1 減る。負にもなる） */
-  lap: number
   /** 速度（m/s） */
   velocity: number
   /** 直前のフレームの Draw Call 数 */
@@ -89,12 +89,24 @@ interface IDebugReadouts {
   triangles: number
 }
 
+/** Status フォルダに表示する値。渡された現在値に、Debug の中で求める値を足したもの */
+interface IDebugStatus extends IDebugReadouts {
+  /** 周回数（0m を前進でまたぐと 1 増え、後退でまたぐと 1 減る。負にもなる） */
+  lap: number
+}
+
+/**
+ * 進行距離から周回数を求める
+ * @param distance 累計の進行距離（m）
+ */
+const toLap = (distance: number): number => Math.floor(distance / COURSE_LENGTH)
+
 /**
  * URL に ?debug を付けたときだけ使うデバッグ GUI（lil-gui）と FPS 表示（stats）。
  * 通常の閲覧時にライブラリを読み込まないよう、Debug.create で動的 import する。
  */
 export class Debug {
-  private readonly readouts: IDebugReadouts = {
+  private readonly status: IDebugStatus = {
     distance: 0,
     courseS: 0,
     lap: 0,
@@ -103,8 +115,6 @@ export class Debug {
     triangles: 0,
   }
 
-  /** 自動歩行の設定。speed が 0 のときは止める */
-  private readonly autoWalk = { speed: 0 }
   private readonly scroll: IDebugScrollTarget
 
   private constructor(
@@ -154,10 +164,12 @@ export class Debug {
     const loopParams = {
       jumpS: LOOP_JUMP_DEFAULT_S,
       // 周回数はいまのまま、コース s だけを指定の位置へ動かす
-      jump: () => scroll.teleport(Debug.toLapStart(scroll.distance) + loopParams.jumpS),
+      jump: () => scroll.teleport(toLap(scroll.distance) * COURSE_LENGTH + loopParams.jumpS),
       forwardFewLaps: () => this.shiftLaps(LOOP_FEW_LAPS),
       backwardFewLaps: () => this.shiftLaps(-LOOP_FEW_LAPS),
       forwardManyLaps: () => this.shiftLaps(LOOP_MANY_LAPS),
+      // 自動歩行: 慣性を通さず一定の速度で進める（境界をまたぐ前後を同じ速さで見比べるため）
+      autoWalkSpeed: 0,
     }
     loop.add(loopParams, "jumpS", 0, LOOP_JUMP_MAX_S, LOOP_JUMP_STEP).name("jump s (m)")
     loop.add(loopParams, "jump").name("jump to s")
@@ -165,16 +177,17 @@ export class Debug {
     loop.add(loopParams, "backwardFewLaps").name(`-${LOOP_FEW_LAPS} laps`)
     loop.add(loopParams, "forwardManyLaps").name(`+${LOOP_MANY_LAPS} laps`)
     loop
-      .add(this.autoWalk, "speed", -MAX_SPEED, MAX_SPEED, AUTO_WALK_SPEED_STEP)
+      .add(loopParams, "autoWalkSpeed", -MAX_SPEED, MAX_SPEED, AUTO_WALK_SPEED_STEP)
       .name("auto walk (m/s)")
+      .onChange((speed: number) => scroll.setAutoWalkSpeed(speed))
 
-    const status = gui.addFolder("Status")
-    status.add(this.readouts, "distance").decimals(2).listen().disable()
-    status.add(this.readouts, "courseS").decimals(2).listen().disable()
-    status.add(this.readouts, "lap").listen().disable()
-    status.add(this.readouts, "velocity").decimals(2).listen().disable()
-    status.add(this.readouts, "drawCalls").listen().disable()
-    status.add(this.readouts, "triangles").listen().disable()
+    const statusFolder = gui.addFolder("Status")
+    statusFolder.add(this.status, "distance").decimals(2).listen().disable()
+    statusFolder.add(this.status, "courseS").decimals(2).listen().disable()
+    statusFolder.add(this.status, "lap").listen().disable()
+    statusFolder.add(this.status, "velocity").decimals(2).listen().disable()
+    statusFolder.add(this.status, "drawCalls").listen().disable()
+    statusFolder.add(this.status, "triangles").listen().disable()
   }
 
   /** ?debug が付いているかどうか */
@@ -194,35 +207,20 @@ export class Debug {
     return new Debug(new GUIClass({ title: "Forest debug" }), new StatsClass(), targets)
   }
 
-  /** 進行距離から、いまの周回の始まり（コース s = 0m）の進行距離を求める（m） */
-  private static toLapStart(distance: number): number {
-    return Math.floor(distance / COURSE_LENGTH) * COURSE_LENGTH
-  }
-
-  /**
-   * 毎フレームの表示更新と自動歩行。Experience のループの最後（描画の後）に呼ぶ。
-   * 自動歩行で動かした位置は、次のフレームの描画に反映される
-   * @param readouts 表示する現在値（周回数は distance から求めるので含めない）
-   * @param deltaSeconds 前フレームからの経過時間（秒）。自動歩行の移動量に使う
-   */
-  update(readouts: Omit<IDebugReadouts, "lap">, deltaSeconds: number): void {
-    Object.assign(this.readouts, readouts)
-    this.readouts.lap = Math.floor(readouts.distance / COURSE_LENGTH)
+  /** 毎フレームの表示更新。Experience のループの最後に呼ぶ */
+  update(readouts: IDebugReadouts): void {
+    Object.assign(this.status, readouts)
+    this.status.lap = toLap(readouts.distance)
     this.stats.update()
-
-    // 自動歩行: 慣性を通さず一定の速度で進める（境界をまたぐ前後を同じ速さで見比べるため）
-    if (this.autoWalk.speed !== 0 && deltaSeconds > 0) {
-      this.scroll.teleport(this.scroll.distance + this.autoWalk.speed * deltaSeconds)
-    }
-  }
-
-  /** コース s はいまのまま、周回数だけを進める（負なら戻す） */
-  private shiftLaps(laps: number): void {
-    this.scroll.teleport(this.scroll.distance + laps * COURSE_LENGTH)
   }
 
   dispose(): void {
     this.gui.destroy()
     this.stats.dom.remove()
+  }
+
+  /** コース s はいまのまま、周回数だけを進める（負なら戻す） */
+  private shiftLaps(laps: number): void {
+    this.scroll.teleport(this.scroll.distance + laps * COURSE_LENGTH)
   }
 }

@@ -125,9 +125,6 @@ export class Experience {
 
     // renderer.info は render のたびに数え直されるため、描画の直後に読む
     const { calls: drawCalls, triangles } = this.renderer.info.render
-    this.debug?.update(
-      { distance, courseS: this.world.courseS, velocity, drawCalls, triangles },
-      deltaSeconds,
-    )
+    this.debug?.update({ distance, courseS: this.world.courseS, velocity, drawCalls, triangles })
   }
 }

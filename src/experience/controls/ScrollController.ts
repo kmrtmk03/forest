@@ -42,6 +42,8 @@ export class ScrollController {
   private currentDistance = 0
   private currentVelocity = 0
   private damping = DAMPING
+  /** 自動歩行の速度（m/s）。0 のときは入力だけで動く（setAutoWalkSpeed を参照） */
+  private autoWalkSpeed = 0
 
   /** 追跡中のタッチの pointerId。タッチしていない間は null */
   private touchPointerId: number | null = null
@@ -91,14 +93,20 @@ export class ScrollController {
     // dt = 0 のフレーム（タブ復帰直後など）は速度が求まらないため、位置だけ維持する
     if (dt <= 0) return
 
+    // 自動歩行の分は、目標位置と現在位置を同じだけ進める。
+    // 両者の差（入力による先行量）は変わらないため、自動歩行中も入力がそのまま上乗せされる
+    const autoWalkStep = this.autoWalkSpeed * dt
+    this.targetDistance += autoWalkStep
+
     const alpha = 1 - Math.exp(-this.damping * dt)
     const maxStep = MAX_SPEED * dt
-    const step = MathUtils.clamp(
+    const inputStep = MathUtils.clamp(
       (this.targetDistance - this.currentDistance) * alpha,
       -maxStep,
       maxStep,
     )
 
+    const step = autoWalkStep + inputStep
     this.currentDistance += step
     this.currentVelocity = step / dt
   }
@@ -116,6 +124,19 @@ export class ScrollController {
     this.targetDistance = distance
     this.currentDistance = distance
     this.currentVelocity = 0
+  }
+
+  /**
+   * 慣性を通さず、一定の速度で進み続けるようにする（デバッグ GUI のループ検証用）。
+   * 入力による移動はこの速度に上乗せされる。update(dt) の中で進めるため、Ticker が止まっている間は進まない
+   * @param speed 速度（m/s）。前進が正、0 で止める
+   * @throws speed が有限の数でない場合（NaN が入ると以後の位置計算がすべて NaN になるため）
+   */
+  setAutoWalkSpeed(speed: number): void {
+    if (!Number.isFinite(speed)) {
+      throw new Error(`ScrollController: 自動歩行の速度が不正です（${speed}）`)
+    }
+    this.autoWalkSpeed = speed
   }
 
   /** 目標位置を動かす。現在位置からの先行量を MAX_LEAD_METERS までに制限する */
