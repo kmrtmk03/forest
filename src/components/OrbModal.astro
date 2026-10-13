@@ -1,0 +1,262 @@
+---
+/**
+ * オーブを選んだときに開くモーダル（計画書 §14-2）。
+ * 全オーブのコンテンツをビルド時に <template data-orb-id> として書き出し、
+ * forest:orb-select を受け取ったら該当する template を複製して <dialog> に差し込み、showModal() で開く。
+ * 本文がビルド時に HTML になるため、クライアントのバンドルに本文や画像の情報を含めずに済む。
+ */
+import { Image } from "astro:assets"
+
+import type { IOrbContent } from "@/data/orb.type"
+import { ORB_CONTENTS } from "@/data/orbs.data"
+
+/** モーダル内の画像の表示幅の上限（px）。srcset の候補はその 1 倍と 2 倍（高解像度の画面用） */
+const IMAGE_DISPLAY_WIDTH = 560
+
+// 画像を持つかどうかで要素の型が分かれないよう、共通の型として扱う
+const orbContents: readonly IOrbContent[] = ORB_CONTENTS
+---
+
+<orb-modal>
+  <dialog class="dialog" aria-labelledby="orb-modal-title" aria-describedby="orb-modal-body">
+    {/* 開いたときの初期フォーカスは閉じるボタン（autofocus）。method="dialog" の送信で dialog が閉じる */}
+    <form method="dialog" class="close-form">
+      <button type="submit" class="close" aria-label="閉じる" autofocus>
+        <span aria-hidden="true">×</span>
+      </button>
+    </form>
+    {/*
+     * dialog 自身には余白を持たせず、この要素で全面を覆う。dialog 自身へのクリック = 背景のクリックにするため。
+     * 本文が長いときはこの要素の中だけをスクロールする（閉じるボタンは上に残る）
+     */}
+    <div class="panel" data-orb-modal-panel>
+      {/* 選ばれたオーブの template の中身をここへ差し込む */}
+      <div class="content" data-orb-modal-content></div>
+    </div>
+  </dialog>
+
+  {orbContents.map(({ id, title, body, image }) => (
+    <template data-orb-id={id}>
+      {/* id は dialog の aria-labelledby / aria-describedby から参照する。同時に差し込むのは 1 件だけなので重複しない */}
+      <h2 id="orb-modal-title" class="title">
+        {title}
+      </h2>
+      {image && (
+        <Image
+          class="image"
+          src={image.src}
+          alt={image.alt}
+          widths={[IMAGE_DISPLAY_WIDTH, IMAGE_DISPLAY_WIDTH * 2]}
+          sizes={`(max-width: ${IMAGE_DISPLAY_WIDTH}px) 100vw, ${IMAGE_DISPLAY_WIDTH}px`}
+        />
+      )}
+      <div id="orb-modal-body" class="body">
+        {body.map((paragraph) => (
+          <p>{paragraph}</p>
+        ))}
+      </div>
+    </template>
+  ))}
+</orb-modal>
+
+<script>
+  import { dispatchModalChange, ORB_SELECT_EVENT } from "@/experience/orbs/orb.events"
+  import type { IOrbSelectDetail } from "@/experience/orbs/orb.events"
+
+  /** 子要素を取得する。マークアップと食い違っていたら、原因が分かるように例外にする */
+  const queryRequired = <TElement extends Element>(root: Element, selector: string): TElement => {
+    const element = root.querySelector<TElement>(selector)
+    if (!element) throw new Error(`OrbModal: ${selector} が見つかりません`)
+    return element
+  }
+
+  /**
+   * forest:orb-select でモーダルを開き、閉じたら forest:modal-change で知らせる。
+   * 開閉の状態は <dialog> 自身（open 属性）が持ち、ほかに状態を持たない（計画書 §22）。
+   *
+   * フォーカスの閉じ込め・Esc で閉じる・背面の inert 化・閉じた後のフォーカスの復帰は showModal() に任せる。
+   * リスナーは AbortController でまとめて登録し、disconnectedCallback で外す。
+   */
+  class OrbModalElement extends HTMLElement {
+    private abortController: AbortController | null = null
+    /** オーブの ID → コンテンツの template */
+    private readonly templates = new Map<string, HTMLTemplateElement>()
+    /** 背景（dialog 自身）の上で押し始めたか。中で押して外で離したドラッグを、背景のクリックとみなさないため */
+    private isPressStartedOnBackdrop = false
+
+    connectedCallback(): void {
+      const dialog = queryRequired<HTMLDialogElement>(this, "dialog")
+
+      this.templates.clear()
+      this.querySelectorAll<HTMLTemplateElement>("template[data-orb-id]").forEach((template) => {
+        const { orbId } = template.dataset
+        if (orbId !== undefined) this.templates.set(orbId, template)
+      })
+
+      this.abortController = new AbortController()
+      const { signal } = this.abortController
+      window.addEventListener(ORB_SELECT_EVENT, this.handleOrbSelect, { signal })
+      dialog.addEventListener("close", this.handleClose, { signal })
+      dialog.addEventListener("pointerdown", this.handleDialogPointerDown, { signal })
+      dialog.addEventListener("click", this.handleDialogClick, { signal })
+    }
+
+    disconnectedCallback(): void {
+      this.abortController?.abort()
+      this.abortController = null
+      // 開いたまま外れても移動が止まったままにならないよう、閉じたことを知らせる
+      // （close イベントのリスナーは外したので、ここで直接知らせる）
+      const dialog = this.querySelector("dialog")
+      if (!dialog?.open) return
+      dialog.close()
+      dispatchModalChange({ isOpen: false, orbId: null })
+    }
+
+    /**
+     * 選ばれたオーブのコンテンツを差し込んで開く。
+     * すでに開いているときは中身だけを差し替える（showModal() を二重に呼ぶと例外になるため）
+     */
+    private readonly handleOrbSelect = ({ detail }: CustomEvent<IOrbSelectDetail>): void => {
+      const { orbId } = detail
+      const template = this.templates.get(orbId)
+      // データと 3D のオーブの対応が崩れている。黙って無視せず、原因が分かるように例外にする
+      if (!template) throw new Error(`OrbModal: ${orbId} のコンテンツがありません`)
+
+      const dialog = queryRequired<HTMLDialogElement>(this, "dialog")
+      queryRequired(dialog, "[data-orb-modal-content]").replaceChildren(
+        template.content.cloneNode(true),
+      )
+      // 長い本文を読み進めた後に別のオーブを開いても、先頭から表示する
+      queryRequired(dialog, "[data-orb-modal-panel]").scrollTop = 0
+
+      if (!dialog.open) dialog.showModal()
+      dispatchModalChange({ isOpen: true, orbId })
+    }
+
+    /** Esc・閉じるボタン・背景のクリックのどれで閉じても、ここで閉じたことを知らせる */
+    private readonly handleClose = (): void => {
+      dispatchModalChange({ isOpen: false, orbId: null })
+    }
+
+    private readonly handleDialogPointerDown = (event: PointerEvent): void => {
+      this.isPressStartedOnBackdrop = event.target === event.currentTarget
+    }
+
+    /** 背景のクリックで閉じる。中身は .panel が覆っているため、dialog 自身がターゲットになるのは背景（::backdrop）だけ */
+    private readonly handleDialogClick = (event: MouseEvent): void => {
+      const isBackdropClick = event.target === event.currentTarget && this.isPressStartedOnBackdrop
+      this.isPressStartedOnBackdrop = false
+      if (!isBackdropClick || !(event.currentTarget instanceof HTMLDialogElement)) return
+      event.currentTarget.close()
+    }
+  }
+
+  // 同じページで二重に定義すると例外になるため、未定義のときだけ登録する
+  if (!customElements.get("orb-modal")) {
+    customElements.define("orb-modal", OrbModalElement)
+  }
+</script>
+
+<style>
+  /* 開閉のアニメーションの長さ。動きを減らす設定では 0 にする */
+  orb-modal {
+    --orb-modal-duration: 0.35s;
+  }
+
+  .dialog {
+    width: min(100% - 2rem, 36rem);
+    max-height: min(100dvh - 2rem, 48rem);
+    padding: 0;
+    overflow: hidden;
+    border: 1px solid rgb(255 255 255 / 0.14);
+    border-radius: 1rem;
+    background: rgb(16 24 22 / 0.92);
+    color: #eef3ec;
+    box-shadow: 0 1.5rem 4rem rgb(0 0 0 / 0.45);
+    opacity: 1;
+    transform: none;
+    transition:
+      opacity var(--orb-modal-duration) ease,
+      transform var(--orb-modal-duration) ease;
+  }
+
+  /* 開いた直後の状態から上の値へ動かす（開くときだけのアニメーション） */
+  @starting-style {
+    .dialog[open] {
+      opacity: 0;
+      transform: translateY(0.75rem) scale(0.98);
+    }
+  }
+
+  /* 背景の森は表示したまま、少し暗くする（計画書 §14-2） */
+  .dialog::backdrop {
+    background: rgb(0 0 0 / 0.35);
+    backdrop-filter: blur(2px);
+  }
+
+  .panel {
+    max-height: inherit;
+    padding: 2.5rem 1.75rem 2rem;
+    overflow-y: auto;
+    /* 本文の端までスクロールしても、外側へスクロールを伝えない */
+    overscroll-behavior: contain;
+  }
+
+  .close-form {
+    position: absolute;
+    z-index: 1;
+    top: 0.5rem;
+    right: 0.5rem;
+    margin: 0;
+  }
+
+  .close {
+    display: grid;
+    width: 2.75rem;
+    height: 2.75rem;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: rgb(255 255 255 / 0.08);
+    color: inherit;
+    font-size: 1.5rem;
+    line-height: 1;
+    cursor: pointer;
+    place-items: center;
+  }
+
+  .close:hover {
+    background: rgb(255 255 255 / 0.16);
+  }
+
+  .close:focus-visible {
+    outline: 2px solid #9fe7ff;
+    outline-offset: 2px;
+  }
+
+  /* template の中身（<Image /> の img を含む）にも scoped の属性が付くため、複製して差し込んだ後もそのまま当たる */
+  .title {
+    margin: 0 2.5rem 1rem 0;
+    font-size: 1.375rem;
+    line-height: 1.4;
+  }
+
+  .image {
+    display: block;
+    width: 100%;
+    height: auto;
+    margin-bottom: 1rem;
+    border-radius: 0.5rem;
+  }
+
+  .body p {
+    margin: 0 0 0.75em;
+    line-height: 1.8;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    orb-modal {
+      --orb-modal-duration: 0s;
+    }
+  }
+</style>

@@ -35,6 +35,7 @@ const TOUCH_VELOCITY_SMOOTHING = 0.8
  * - currentDistance: 実際のカメラ位置。リセットせず無限に増減する（1 周分の折り返しは描画側で行う）
  *
  * 毎フレーム update(dt) を呼ぶこと。呼ばないと currentDistance が目標へ追従しない。
+ * setEnabled(false) の間は入力を受け付けない（モーダル表示中の停止に使う）。
  * リスナーは渡された AbortSignal で登録するため、Experience の abort() で一括解除される。
  */
 export class ScrollController {
@@ -44,6 +45,8 @@ export class ScrollController {
   private damping = DAMPING
   /** 自動歩行の速度（m/s）。0 のときは入力だけで動く（setAutoWalkSpeed を参照） */
   private autoWalkSpeed = 0
+  /** 入力を受け付けるか。false の間は wheel・タッチ・キーボードを無視する（setEnabled を参照） */
+  private isEnabled = true
 
   /** 追跡中のタッチの pointerId。タッチしていない間は null */
   private touchPointerId: number | null = null
@@ -139,6 +142,21 @@ export class ScrollController {
     this.autoWalkSpeed = speed
   }
 
+  /**
+   * 入力の受け付けを切り替える。止めるときは慣性の残りも捨て、その場で止まるようにする
+   * （モーダルを開いた後もカメラが進み続けて背景がずれないようにするため）。
+   * 自動歩行（デバッグ用）は入力ではないため止めない
+   * @param isEnabled true で受け付ける、false で無視する
+   */
+  setEnabled(isEnabled: boolean): void {
+    if (isEnabled === this.isEnabled) return
+    this.isEnabled = isEnabled
+    if (isEnabled) return
+
+    this.targetDistance = this.currentDistance
+    this.endTouch()
+  }
+
   /** 目標位置を動かす。現在位置からの先行量を MAX_LEAD_METERS までに制限する */
   private moveTarget(meters: number): void {
     this.targetDistance = MathUtils.clamp(
@@ -168,6 +186,7 @@ export class ScrollController {
   /** wheel の delta を px 相当へ揃え、1 イベントあたりの上限で抑えてから距離に変換する */
   private readonly handleWheel = (event: WheelEvent): void => {
     event.preventDefault()
+    if (!this.isEnabled) return
 
     const clampedDeltaPx = MathUtils.clamp(
       this.toDeltaPx(event),
@@ -180,7 +199,7 @@ export class ScrollController {
 
   /** タッチの開始。マウス・ペンはドラッグ移動の対象外（クリック操作に使うため） */
   private readonly handlePointerDown = (event: PointerEvent): void => {
-    if (event.pointerType !== "touch" || this.touchPointerId !== null) return
+    if (!this.isEnabled || event.pointerType !== "touch" || this.touchPointerId !== null) return
 
     this.touchPointerId = event.pointerId
     this.lastTouchY = event.clientY
@@ -227,6 +246,8 @@ export class ScrollController {
   }
 
   private readonly handleKeyDown = (event: KeyboardEvent): void => {
+    // 止めている間は preventDefault もしない（モーダル内のスクロールなど、本来のキー操作を妨げないため）
+    if (!this.isEnabled) return
     if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return
     // フォーム部品やリンクにフォーカスがあるときは、Space などの本来の操作を優先する
     if (event.target instanceof Element && event.target.closest(INTERACTIVE_SELECTOR)) return

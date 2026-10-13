@@ -3,8 +3,11 @@ import type { TOrbId, TOrbMarker } from "@/data/orb.type"
 /** オーブ ID の接頭辞（TOrbId のテンプレートリテラル型と同じ） */
 const ORB_ID_PREFIX = "orb-"
 
-/** オーブ ID の形（"orb-" で始まる文字列）か判定する */
-const isOrbId = (value: unknown): value is TOrbId =>
+/**
+ * オーブ ID の形（"orb-" で始まる文字列）か判定する。
+ * data 属性など HTML を経由した文字列は型の保証がないため、TOrbId として使う前にこれで検証する
+ */
+export const isOrbId = (value: unknown): value is TOrbId =>
   typeof value === "string" && value.startsWith(ORB_ID_PREFIX)
 
 /**

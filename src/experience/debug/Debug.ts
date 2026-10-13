@@ -3,7 +3,7 @@ import type GUI from "three/addons/libs/lil-gui.module.min.js"
 import type Stats from "three/addons/libs/stats.module.js"
 
 import { CAMERA_FAR, MAX_SPEED } from "@/experience/controls/controls.constants"
-import { ORB_SELECT_EVENT } from "@/experience/orbs/orb.events"
+import { MODAL_CHANGE_EVENT, ORB_SELECT_EVENT } from "@/experience/orbs/orb.events"
 import { COURSE_LENGTH, PLANET_RADIUS_CANDIDATES } from "@/experience/world/world.constants"
 
 /** 惑星半径スライダーの範囲（m） */
@@ -128,10 +128,15 @@ export class Debug {
     this.scroll = scroll
     document.body.append(stats.dom)
 
-    // オーブのクリック・タップで forest:orb-select が発火したことをコンソールで確かめる（Phase 6 のモーダルまでの代わり）
+    // オーブの選択とモーダルの開閉のイベントが発火したことを、コンソールで確かめる
     window.addEventListener(
       ORB_SELECT_EVENT,
       (event) => console.info(`[debug] ${ORB_SELECT_EVENT}:`, event.detail.orbId),
+      { signal: this.abortController.signal },
+    )
+    window.addEventListener(
+      MODAL_CHANGE_EVENT,
+      ({ detail }) => console.info(`[debug] ${MODAL_CHANGE_EVENT}:`, detail.isOpen, detail.orbId),
       { signal: this.abortController.signal },
     )
 

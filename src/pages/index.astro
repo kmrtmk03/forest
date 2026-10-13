@@ -1,5 +1,7 @@
 ---
 import ForestExperience from "@/components/ForestExperience.astro"
+import OrbList from "@/components/OrbList.astro"
+import OrbModal from "@/components/OrbModal.astro"
 import { FOG_COLOR } from "@/experience/world/world.constants"
 
 const pageTitle = "Forest"
@@ -17,6 +19,10 @@ const pageDescription = "スクロールで小さな星の森を歩く 3D サイ
   <body>
     <h1 class="visually-hidden">Forest — 小さな星の森を歩くサイト</h1>
     <ForestExperience />
+    {/* OrbList は 3D を起動できなかったときに ForestExperience の状態を見て表示するため、その後ろに置く */}
+    <OrbList />
+    {/* <dialog> は最前面（top layer）に描かれるため z-index は要らない */}
+    <OrbModal />
   </body>
 </html>
 
