@@ -3,9 +3,14 @@
  * Three.js の森を全画面に描画するコンポーネント。
  * 初期化はクライアント側のカスタム要素 <forest-experience> が行い、要素が DOM から外れたら破棄する。
  */
+import type { TOrbMarker } from "@/data/orb.type"
+import { ORB_CONTENTS } from "@/data/orbs.data"
+
+// オーブの描画に要る情報だけを data 属性で渡す。本文や画像をクライアントのバンドルに含めないため
+const orbMarkers: TOrbMarker[] = ORB_CONTENTS.map(({ id, label, color }) => ({ id, label, color }))
 ---
 
-<forest-experience>
+<forest-experience data-orbs={JSON.stringify(orbMarkers)}>
   <canvas class="canvas" aria-hidden="true"></canvas>
   <p class="message" role="alert">
     お使いのブラウザでは 3D 表示を開始できませんでした。WebGL に対応したブラウザでご覧ください。
@@ -17,6 +22,7 @@
 
 <script>
   import { Experience } from "@/experience/Experience"
+  import { parseOrbMarkers } from "@/experience/orbs/orbMarker.utils"
 
   /**
    * Experience の生成と破棄をカスタム要素のライフサイクルに結び付ける。
@@ -27,7 +33,7 @@
 
     connectedCallback(): void {
       try {
-        this.experience = new Experience(this)
+        this.experience = new Experience(this, parseOrbMarkers(this.dataset.orbs))
       } catch (error) {
         this.showError(error)
         return

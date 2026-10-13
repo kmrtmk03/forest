@@ -3,6 +3,7 @@ import type GUI from "three/addons/libs/lil-gui.module.min.js"
 import type Stats from "three/addons/libs/stats.module.js"
 
 import { CAMERA_FAR, MAX_SPEED } from "@/experience/controls/controls.constants"
+import { ORB_SELECT_EVENT } from "@/experience/orbs/orb.events"
 import { COURSE_LENGTH, PLANET_RADIUS_CANDIDATES } from "@/experience/world/world.constants"
 
 /** 惑星半径スライダーの範囲（m） */
@@ -116,6 +117,8 @@ export class Debug {
   }
 
   private readonly scroll: IDebugScrollTarget
+  /** Debug が window に登録したリスナーを dispose() で外す */
+  private readonly abortController = new AbortController()
 
   private constructor(
     private readonly gui: GUI,
@@ -124,6 +127,13 @@ export class Debug {
   ) {
     this.scroll = scroll
     document.body.append(stats.dom)
+
+    // オーブのクリック・タップで forest:orb-select が発火したことをコンソールで確かめる（Phase 6 のモーダルまでの代わり）
+    window.addEventListener(
+      ORB_SELECT_EVENT,
+      (event) => console.info(`[debug] ${ORB_SELECT_EVENT}:`, event.detail.orbId),
+      { signal: this.abortController.signal },
+    )
 
     // 惑星半径: 候補値の切り替えと、細かい調整用のスライダー
     const planet = gui.addFolder("Planet")
@@ -215,6 +225,7 @@ export class Debug {
   }
 
   dispose(): void {
+    this.abortController.abort()
     this.gui.destroy()
     this.stats.dom.remove()
   }

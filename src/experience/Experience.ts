@@ -1,11 +1,14 @@
 import { WebGLRenderer } from "three"
 
+import type { TOrbMarker } from "@/data/orb.type"
+
 import { CameraController } from "./controls/CameraController"
 import { ScrollController } from "./controls/ScrollController"
 import { Ticker } from "./core/Ticker"
 import { Viewport } from "./core/Viewport"
 import type { IViewportSize } from "./core/Viewport"
 import { Debug } from "./debug/Debug"
+import { OrbManager } from "./orbs/OrbManager"
 import { World } from "./world/World"
 
 /** 初期化の状態。ホスト要素の data-state に反映し、CSS でフェードインに使う */
@@ -18,7 +21,8 @@ type TExperienceState = "loading" | "ready"
  * destroy() を呼ばないと、ループ・リスナー・GPU リソースが残り続ける。
  *
  * 毎フレームの更新は次の一方向の流れで行い、クラス同士は互いを直接参照しない。
- *   Ticker → ScrollController.update → World.update（曲げ変換の uniform 更新を含む）→ 描画
+ *   Ticker → ScrollController.update → World.update（曲げ変換の uniform 更新を含む）
+ *   → OrbManager.update（更新済みの uniform からオーブの位置を求める）→ 描画
  */
 export class Experience {
   /** すべてのイベントリスナーをこの signal で登録し、destroy() で一括解除する */
@@ -26,6 +30,7 @@ export class Experience {
   private readonly renderer: WebGLRenderer
   private readonly cameraController: CameraController
   private readonly world: World
+  private readonly orbManager: OrbManager
   private readonly scrollController: ScrollController
   private readonly viewport: Viewport
   private readonly ticker: Ticker
@@ -34,9 +39,14 @@ export class Experience {
 
   /**
    * @param host canvas を内包するコンテナ要素（<forest-experience>）。入力の受け付けとサイズ監視に使う
-   * @throws canvas が見つからない場合や、WebGL コンテキストを作れない場合
+   * @param orbMarkers オーブの描画用データ（Astro が data-orbs 属性で渡す）。並び順がコース上の並び順になる
+   * @throws canvas が見つからない場合、WebGL コンテキストを作れない場合、
+   *   オーブのデータの件数が 1 周のオーブの数と合わない場合
    */
-  constructor(private readonly host: HTMLElement) {
+  constructor(
+    private readonly host: HTMLElement,
+    orbMarkers: readonly TOrbMarker[],
+  ) {
     const canvas = host.querySelector("canvas")
     if (!canvas) throw new Error("Experience: canvas 要素が見つかりません")
 
@@ -48,17 +58,32 @@ export class Experience {
       antialias: true,
       powerPreference: "high-performance",
     })
+    // 生成に失敗したとき、それより前に作った World・OrbManager を破棄するために覚えておく
+    let world: World | null = null
+    let orbManager: OrbManager | null = null
     try {
       this.cameraController = new CameraController()
-      this.world = new World()
+      world = new World()
+      this.world = world
+      orbManager = new OrbManager({
+        host,
+        signal,
+        camera: this.cameraController.camera,
+        curvatureUniforms: world.curvatureUniforms,
+        markers: orbMarkers,
+      })
+      this.orbManager = orbManager
+      world.scene.add(orbManager.group)
       this.scrollController = new ScrollController(host, signal)
       // Viewport は生成時に 1 回 handleResize を呼ぶため、renderer と camera の生成後に作る
       this.viewport = new Viewport(host, signal, this.handleResize)
       this.ticker = new Ticker(this.renderer, signal, this.handleTick)
     } catch (error) {
-      // 生成に失敗すると呼び出し側は destroy() を呼べないため、ここまでに作ったリスナーとレンダラーを解放する。
-      // World は自分の中で失敗したときに、作った分を破棄してから例外を投げる
+      // 生成に失敗すると呼び出し側は destroy() を呼べないため、ここまでに作ったリスナー・World・レンダラーを解放する。
+      // World・OrbManager は自分の中で失敗したときに、作った分を破棄してから（または作る前に）例外を投げる
       this.abortController.abort()
+      orbManager?.dispose()
+      world?.dispose()
       this.renderer.dispose()
       throw error
     }
@@ -99,6 +124,7 @@ export class Experience {
     this.viewport.dispose()
     this.debug?.dispose()
     this.debug = null
+    this.orbManager.dispose()
     this.world.dispose()
     this.renderer.dispose()
   }
@@ -120,6 +146,7 @@ export class Experience {
     this.scrollController.update(deltaSeconds)
     const { distance, velocity } = this.scrollController
     this.world.update(distance)
+    this.orbManager.update(deltaSeconds)
 
     this.renderer.render(this.world.scene, this.cameraController.camera)
 
