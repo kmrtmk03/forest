@@ -1,5 +1,5 @@
 import { Color, Mesh, MeshLambertMaterial, PlaneGeometry } from "three"
-import type { WebGLProgramParametersWithUniforms } from "three"
+import type { IUniform, Texture, WebGLProgramParametersWithUniforms } from "three"
 
 import { applyCurvature } from "@/experience/curvature/applyCurvature"
 import type { ICurvatureUniforms } from "@/experience/curvature/applyCurvature"
@@ -16,6 +16,7 @@ import hashShader from "@/experience/shaders/hash.glsl?raw"
 import { insertAfterShaderChunk } from "@/experience/shaders/shaderChunk.utils"
 
 import { assertDividesCourseLength } from "./course.utils"
+import { GROUND_SHADOW_HALF_WIDTH } from "./GroundShadowMap"
 import { COURSE_LENGTH, PATH_HALF_WIDTH } from "./world.constants"
 
 /** 地面の頂点間隔（m）。曲げ変換と起伏は頂点単位なので、粗すぎると球面や丘がカクつく */
@@ -42,6 +43,9 @@ const MOSS_COLOR = "#6f8a3c"
 const DIRT_DARK_COLOR = "#5e4b35"
 const DIRT_LIGHT_COLOR = "#8a7452"
 
+/** 木漏れ日の色。地面の色に足す明るさの色味で、斜め前からの暖色の光（Atmosphere の SUN_COLOR）に寄せた */
+const DAPPLE_COLOR = "#fff0c8"
+
 /**
  * 地面の模様のノイズのセルの大きさ（m）。ground.frag.glsl へ同名の #define で渡す。
  * s 方向のセル番号を 1 周で折り返すため、すべて COURSE_LENGTH を割り切る値にする（コンストラクタで検証する）
@@ -55,6 +59,10 @@ const GROUND_NOISE_CELLS = {
   GROUND_PEBBLE_CELL: 0.5,
   /** 細かいざらつき */
   GROUND_GRAIN_CELL: 0.25,
+  /** 木漏れ日の斑点が多い区域と少ない区域（葉の茂り方の濃淡） */
+  GROUND_DAPPLE_AREA_CELL: 2.5,
+  /** 木漏れ日の丸い光を 1 つ置くセル（光の半径は ground.frag.glsl で 0.15〜0.95m。縁へ向けてなだらかに薄れる）。光の半径の上限はこの値以下にする */
+  GROUND_DAPPLE_SPOT_CELL: 1,
   /** 道の縁の大きなうねり */
   GROUND_EDGE_LARGE_CELL: 2,
   /** 道の縁の細かい欠け */
@@ -83,6 +91,7 @@ const GROUND_DEFINES = {
   GROUND_HILL_RAMP_END: toGlslFloat(GROUND_HILL_RAMP_END),
   GROUND_HILL_HEIGHT: toGlslFloat(GROUND_HILL_HEIGHT),
   GROUND_NORMAL_SAMPLE_OFFSET: toGlslFloat(GROUND_NORMAL_SAMPLE_OFFSET),
+  GROUND_SHADOW_HALF_WIDTH: toGlslFloat(GROUND_SHADOW_HALF_WIDTH),
   // GLSL の配列は長さ 0 にできないため、定数側で 1 件以上を保つこと
   GROUND_PATH_MEANDER_WAVE_COUNT: PATH_MEANDER_WAVES.length,
   GROUND_PATH_MEANDER_WAVES: PATH_MEANDER_WAVES.map(
@@ -117,9 +126,12 @@ const POSITION_PATCH = /* glsl */ `
   transformed.y += groundHeight(groundFlatPosition.x, -groundFlatPosition.z);
 `
 
-/** 地面の模様を色に反映する処理（color_fragment の後に差し込む）。vCourseCoord は applyCurvature が渡す */
+/**
+ * 地面の模様と光の模様（根元の影・木漏れ日）を色に反映する処理（color_fragment の後に差し込む）。
+ * vCourseCoord は applyCurvature が渡す。光の模様は地面の色（反射率）に掛けるため、光源の光にも環境光にも同じだけ効く
+ */
 const COLOR_PATCH = /* glsl */ `
-  diffuseColor.rgb *= groundSurfaceColor(vCourseCoord);
+  diffuseColor.rgb *= groundSurfaceColor(vCourseCoord) * groundLightPattern(vCourseCoord);
 `
 
 /**
@@ -128,15 +140,29 @@ const COLOR_PATCH = /* glsl */ `
  * メッシュ自体はカメラの真下に付いて回るだけなので、ループの影響を受けない。
  * 起伏と模様はコース座標で計算するため、カメラが動くと地形と模様だけが流れて「進んでいる」ように見える。
  * 道は専用のメッシュを作らず、フラグメントシェーダー内で道のマスクを計算して土の色を塗る。
+ * 配置物の根元の影（GroundShadowMap）と、揺れる木漏れ日の斑点も、同じフラグメントシェーダーで描く。
  */
 export class Ground {
   readonly mesh: Mesh<PlaneGeometry, MeshLambertMaterial>
+  private readonly timeUniform: IUniform<number>
+  private readonly shadowTexture: Texture
 
-  /** @throws ノイズのセルの大きさが COURSE_LENGTH を割り切らない場合 */
-  constructor(curvatureUniforms: ICurvatureUniforms) {
+  /**
+   * @param curvatureUniforms 曲げ変換の共有 uniform
+   * @param timeUniform 経過時間（秒）の共有 uniform。木漏れ日を揺らす（World が毎フレーム更新する）
+   * @param shadowTexture 配置物の根元の影（GroundShadowMap の texture）。破棄は渡した側が行う
+   * @throws ノイズのセルの大きさが COURSE_LENGTH を割り切らない場合
+   */
+  constructor(
+    curvatureUniforms: ICurvatureUniforms,
+    timeUniform: IUniform<number>,
+    shadowTexture: Texture,
+  ) {
     Object.entries(GROUND_NOISE_CELLS).forEach(([name, cellSize]) =>
       assertDividesCourseLength(`Ground: ${name}`, cellSize),
     )
+    this.timeUniform = timeUniform
+    this.shadowTexture = shadowTexture
 
     const geometry = new PlaneGeometry(GROUND_SIZE, GROUND_SIZE, GROUND_SEGMENTS, GROUND_SEGMENTS)
     // PlaneGeometry は XY 平面なので、XZ 平面（地面）へ寝かせる
@@ -174,13 +200,17 @@ export class Ground {
     this.mesh.material.dispose()
   }
 
-  /** 曲げ変換の後に、起伏（頂点）と模様（フラグメント）の処理を差し込む */
+  /** 曲げ変換の後に、起伏（頂点）と模様・光の模様（フラグメント）の処理を差し込む */
   private readonly patchShader = (shader: WebGLProgramParametersWithUniforms): void => {
     shader.uniforms.uGrassDarkColor = { value: new Color(GRASS_DARK_COLOR) }
     shader.uniforms.uGrassLightColor = { value: new Color(GRASS_LIGHT_COLOR) }
     shader.uniforms.uMossColor = { value: new Color(MOSS_COLOR) }
     shader.uniforms.uDirtDarkColor = { value: new Color(DIRT_DARK_COLOR) }
     shader.uniforms.uDirtLightColor = { value: new Color(DIRT_LIGHT_COLOR) }
+    shader.uniforms.uDappleColor = { value: new Color(DAPPLE_COLOR) }
+    shader.uniforms.uGroundShadowMap = { value: this.shadowTexture }
+    // 共有 uniform はオブジェクトごと渡し、World の更新がそのまま届くようにする
+    shader.uniforms.uTime = this.timeUniform
 
     let vertexShader = insertAfterShaderChunk(shader.vertexShader, "common", groundShader)
     vertexShader = insertAfterShaderChunk(vertexShader, "beginnormal_vertex", NORMAL_PATCH)

@@ -156,7 +156,7 @@ export class Experience {
   private readonly handleTick = (deltaSeconds: number): void => {
     this.scrollController.update(deltaSeconds)
     const { distance, velocity } = this.scrollController
-    this.world.update(distance)
+    this.world.update(distance, deltaSeconds)
     this.orbManager.update(deltaSeconds)
 
     this.renderer.render(this.world.scene, this.cameraController.camera)
